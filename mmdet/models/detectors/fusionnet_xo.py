@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+from mmdet.core import bbox2result
 from ..builder import DETECTORS, build_neck
 from .single_stage import SingleStageDetector
 from ..utils import FusionLayer
@@ -117,6 +118,16 @@ class FusionNetXO(SingleStageDetector):
                                               gt_labels, gt_bboxes_ignore)
         losses.update(aux_losses)
         return losses
+
+    def simple_test(self, img, img_metas, rescale=False):
+        """Run inference while preserving geometry metadata for TRPC masks."""
+        feat = self.extract_feat(img, img_metas=img_metas)
+        results_list = self.bbox_head.simple_test(
+            feat, img_metas, rescale=rescale)
+        return [
+            bbox2result(det_bboxes, det_labels, self.bbox_head.num_classes)
+            for det_bboxes, det_labels in results_list
+        ]
 
     # def show_result(self,
     #                 img,

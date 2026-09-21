@@ -1,6 +1,6 @@
 # Thermal-Referenced Prototype Calibration (TRPC)
 #
-# Complete CLFM replacement:
+# Replacement of CLFM's DWT/LL/HF/IDWT frequency-fusion operations:
 #   RGB/T -> object-aware prototypes -> mutual semantic matching
 #         -> Thermal-guided RGB prototype residual
 #         -> RGB-attention reconstruction -> original AAM/HOFM

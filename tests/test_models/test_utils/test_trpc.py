@@ -1,7 +1,24 @@
 import torch
 
+from mmdet.models.detectors.fusionnet_xo import FusionNetXO
 from mmdet.models.utils.trpc import TRPC
+from mmdet.models.utils.trpc import balanced_binary_focal_loss
+from mmdet.models.utils.trpc import make_padding_mask
 from mmdet.models.utils.fusion_strategy import FusionLayer
+
+
+def _assert_nonzero_finite_gradient(parameter, name):
+    assert parameter.grad is not None, name
+    assert torch.isfinite(parameter.grad).all(), name
+    assert torch.count_nonzero(parameter.grad) > 0, name
+
+
+def _path_gradient_is_nonzero(module):
+    gradients = [
+        parameter.grad for parameter in module.parameters()
+        if parameter.grad is not None
+    ]
+    return gradients and any(torch.count_nonzero(grad) > 0 for grad in gradients)
 
 
 def test_trpc_forward_backward_and_attention_contract():
@@ -26,11 +43,6 @@ def test_trpc_forward_backward_and_attention_contract():
     assert output.shape == thermal.shape
     assert torch.isfinite(output).all()
     assert torch.equal(thermal.detach(), thermal_before)  # Thermal is reference-only.
-    # The calibration path cannot optimize the thermal reference.  Thermal is
-    # still trained by COXNet's downstream HOFM and its own auxiliary losses.
-    calibration_grad = torch.autograd.grad(
-        output.square().mean(), thermal, retain_graph=True, allow_unused=True)[0]
-    assert calibration_grad is None or torch.count_nonzero(calibration_grad) == 0
     assert aux['match_weights'].shape == (2, 4, 4)
     assert 0.0 <= aux['match_rate'].item() <= 1.0
     assert 0.0 <= aux['match_confidence'].item() <= 1.0
@@ -60,14 +72,125 @@ def test_trpc_forward_backward_and_attention_contract():
         'visible_upsample.Deconv.weight',
         'rgb_extractor.embed.weight',
         'thermal_extractor.embed.weight',
-        'gate_mlp.0.weight',
-        'delta_mlp.0.weight',
         'delta_to_rgb.weight',
     )
     grads = dict(module.named_parameters())
     for name in required:
         assert grads[name].grad is not None, name
         assert torch.isfinite(grads[name].grad).all(), name
+    _assert_nonzero_finite_gradient(
+        grads['delta_to_rgb.weight'], 'delta_to_rgb.weight')
+
+
+def test_thermal_reference_is_detached_with_active_residual_projection():
+    """Stop-gradient must hold even when the residual actuator is active."""
+    torch.manual_seed(13)
+    module = TRPC(channels=16, embed_dim=8, num_prototypes=4)
+    with torch.no_grad():
+        module.delta_to_rgb.weight.fill_(0.01)
+
+    rgb = torch.randn(2, 16, 4, 5, requires_grad=True)
+    thermal = torch.randn(2, 16, 8, 10, requires_grad=True)
+    output = module(rgb, thermal)
+    deconv_only = module.visible_upsample(rgb)
+    assert not torch.allclose(output, deconv_only)
+
+    rgb_grad, thermal_grad = torch.autograd.grad(
+        output.square().mean(), (rgb, thermal), allow_unused=True)
+    assert rgb_grad is not None and torch.count_nonzero(rgb_grad) > 0
+    assert thermal_grad is None or torch.count_nonzero(thermal_grad) == 0
+
+
+def test_gate_and_delta_paths_learn_after_zero_init_optimizer_step():
+    """The zero-init actuator must open learning paths after its first step."""
+    torch.manual_seed(17)
+    module = TRPC(channels=16, embed_dim=8, num_prototypes=4)
+    optimizer = torch.optim.SGD(module.parameters(), lr=0.1)
+    rgb = torch.randn(2, 16, 4, 5)
+    thermal = torch.randn(2, 16, 8, 10)
+
+    first_output = module(rgb, thermal)
+    first_output.square().mean().backward()
+    _assert_nonzero_finite_gradient(
+        module.delta_to_rgb.weight, 'delta_to_rgb.weight at first step')
+    optimizer.step()
+    assert torch.count_nonzero(module.delta_to_rgb.weight) > 0
+
+    optimizer.zero_grad(set_to_none=True)
+    second_output = module(rgb, thermal)
+    second_output.square().mean().backward()
+    assert _path_gradient_is_nonzero(module.gate_mlp)
+    assert _path_gradient_is_nonzero(module.delta_mlp)
+
+
+def test_thermal_auxiliary_losses_train_thermal_extractor():
+    """Targetness and diversity retain learning signals for Thermal features."""
+    torch.manual_seed(19)
+    module = TRPC(channels=16, embed_dim=8, num_prototypes=4)
+    rgb = torch.randn(2, 16, 4, 5)
+    thermal = torch.randn(2, 16, 8, 10)
+    _, aux = module(rgb, thermal, return_aux=True)
+
+    logits = aux['thermal_objectness_logits']
+    target = torch.zeros_like(logits)
+    target[:, :, 2:6, 3:8] = 1.0
+    valid = torch.ones_like(logits, dtype=torch.bool)
+    targetness = balanced_binary_focal_loss(logits, target, valid)
+    target_grads = torch.autograd.grad(
+        targetness,
+        (module.thermal_extractor.embed.weight,
+         module.thermal_extractor.objectness_out.weight),
+        retain_graph=True)
+    for name, gradient in zip(
+            ('thermal embed from targetness', 'thermal objectness head'),
+            target_grads):
+        assert gradient is not None, name
+        assert torch.isfinite(gradient).all(), name
+        assert torch.count_nonzero(gradient) > 0, name
+
+    diversity_grad = torch.autograd.grad(
+        aux['diversity_loss'], module.thermal_extractor.embed.weight)[0]
+    assert torch.isfinite(diversity_grad).all()
+    assert torch.count_nonzero(diversity_grad) > 0
+
+
+def test_simple_test_passes_padding_geometry_to_trpc_path():
+    """Padded feature cells must remain masked during simple inference."""
+    class RecordingDetector:
+        class EmptyHead:
+            num_classes = 1
+
+            @staticmethod
+            def simple_test(feats, img_metas, rescale=False):
+                batch = len(img_metas)
+                return [
+                    (torch.empty(0, 5), torch.empty(0, dtype=torch.long))
+                    for _ in range(batch)
+                ]
+
+        bbox_head = EmptyHead()
+
+        def extract_feat(self, img, img_metas=None):
+            assert img_metas is not None
+            shapes = [meta['img_shape'][:2] for meta in img_metas]
+            padded = img_metas[0]['batch_input_shape']
+            self.valid_mask = make_padding_mask(
+                shapes, padded, (48, 80), img[1].device)
+            return [img[1]]
+
+    detector = RecordingDetector()
+    padded_rgb = torch.randn(1, 3, 384, 640)
+    padded_thermal = torch.randn(1, 3, 384, 640)
+    img_metas = [dict(
+        img_shape=(360, 640, 3),
+        pad_shape=(384, 640, 3),
+        batch_input_shape=(384, 640))]
+
+    FusionNetXO.simple_test(
+        detector, (padded_rgb, padded_thermal), img_metas)
+    assert detector.valid_mask.shape == (1, 1, 48, 80)
+    assert detector.valid_mask[:, :, :45].all()
+    assert not detector.valid_mask[:, :, 45:].any()
 
 
 def test_trpc_odd_resolution_fallback():

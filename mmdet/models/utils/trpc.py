@@ -1,9 +1,11 @@
 """Thermal-Referenced Prototype Calibration (TRPC).
 
-TRPC replaces COXNet's CLFM slot.  It reduces the semantic/domain gap before
-the original AAM while deliberately leaving spatial alignment to AAM:
+TRPC replaces COXNet's CLFM frequency-fusion operations while retaining its
+cross-level DeConv resolution matcher. It is intended to reduce the
+semantic/domain gap before the original AAM while deliberately leaving spatial
+alignment to AAM:
 
-    RGB, Thermal -> target-aware prototypes -> mutual semantic matching
+    RGB, Thermal -> learned prototypes -> mutual semantic matching
                  -> Thermal-guided RGB prototype residual
                  -> RGB-attention reconstruction -> AAM(RGB_cal, Thermal)
 
@@ -335,6 +337,9 @@ class TRPC(nn.Module):
             before = F.cosine_similarity(p_rgb.float(), guidance, dim=-1)
             after = F.cosine_similarity(calibrated_prototype, guidance, dim=-1)
             n_matched = matched.sum().clamp_min(1)
+            # Prototype-space diagnostics only.  ``after`` is measured before
+            # projection, spatial reconstruction, and residual scaling, so it
+            # does not establish calibration of the actual AAM input.
             proto_cos_before = (before * matched).sum() / n_matched
             proto_cos_after = (after * matched).sum() / n_matched
             entropy_rgb = self.normalized_attention_entropy(a_rgb_pool)

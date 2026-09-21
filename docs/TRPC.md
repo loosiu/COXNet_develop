@@ -1,14 +1,16 @@
 # Thermal-Referenced Prototype Calibration (TRPC)
 
-TRPC is a complete replacement for COXNet's Cross-Layer Fusion Module (CLFM).
-It reduces the semantic/domain discrepancy before the original Adaptive
-Alignment Module (AAM), while leaving spatial alignment to AAM.
+TRPC replaces the DWT/LL/HF/IDWT frequency-fusion operations in COXNet's
+Cross-Layer Fusion Module (CLFM). The original cross-level structure and
+DeConv resolution matcher remain. TRPC is intended to reduce semantic/domain
+discrepancy before the original Adaptive Alignment Module (AAM), while leaving
+spatial alignment to AAM.
 
 ## Architecture
 
 ```text
 RGB, Thermal
-  -> object-aware prototype extraction (P_R, P_T)
+  -> task-learned RGB and objectness-supervised Thermal prototypes (P_R, P_T)
   -> cosine mutual top-1 matching
   -> detached Thermal reference guidance
   -> gated residual calibration of RGB prototypes only
@@ -59,11 +61,22 @@ The log also reports:
 - `trpc_attention_entropy_rgb`, `trpc_attention_entropy_thermal`
 - `trpc_prototype_usage`, with modality-specific variants
 
-`delta_ratio` is the relative calibration magnitude
-`||F_R_cal - F_R||_2 / (||F_R||_2 + eps)`. A mechanism-consistent run should
-eventually show matched-prototype cosine similarity increasing after
-calibration. Mutual top-1 is intentionally retained for the first experiment;
-relax it only if match rate remains too low throughout training.
+`delta_ratio` is the relative feature-change magnitude
+`||F_R_cal - F_R||_2 / (||F_R||_2 + eps)`. The prototype cosine values are
+computed before the output projection, RGB assignment reconstruction, and
+residual scaling. They are internal diagnostics and do not establish that the
+actual AAM input was semantically calibrated. Likewise, `match_rate` only
+reports how often mutual top-k pairing exists. It is not correspondence
+accuracy, and the current matcher has no semantic-similarity rejection
+threshold. Mutual top-1 is intentionally retained for the first experiment;
+relax or reject matches only through a controlled ablation.
+
+Claims about domain calibration require separate feature-level measurements,
+cross-modal correspondence accuracy, AAM alignment error, and downstream
+detection results. The diagnostics above are insufficient on their own.
+
+The same padding mask is supplied during training and `simple_test`, so padded
+feature cells do not participate in prototype extraction or reconstruction.
 
 ## Files
 
