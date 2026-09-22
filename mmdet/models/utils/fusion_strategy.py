@@ -66,9 +66,9 @@ class FusionLayer(nn.Module):
                         out_channel=in_channels,
                         mode=clfm_mode,))
 
-        # TRPC replaces CLFM's DWT/LL/HF/IDWT operations.  Consume the original
-        # CLFM initialization stream and retain its DeConv so same-seed shared
-        # HOFM/head weights and cross-level resolution matching stay identical.
+        # Same-stage TRPC removes CLFM completely. The legacy branch retains
+        # only CLFM's DeConv and initialization behavior so its first experiment
+        # remains reproducible.
         _trpc_cfg = dict(trpc_cfg or {})
         self.trpc_target_loss_weight = float(
             _trpc_cfg.pop('targetness_loss_weight', 0.1))
