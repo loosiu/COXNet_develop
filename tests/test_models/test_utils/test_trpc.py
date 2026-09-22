@@ -2,6 +2,7 @@ import torch
 
 from mmdet.models.detectors.fusionnet_xo import FusionNetXO
 from mmdet.models.utils.trpc import TRPC
+from mmdet.models.utils.trpc import ThermalConditionedTRPC
 from mmdet.models.utils.trpc import balanced_binary_focal_loss
 from mmdet.models.utils.trpc import make_padding_mask
 from mmdet.models.utils.fusion_strategy import FusionLayer
@@ -221,6 +222,54 @@ def test_same_stage_trpc_has_no_deconv_and_rejects_shape_mismatch():
         raise AssertionError('same-stage TRPC silently accepted mismatched shapes')
 
 
+def test_thermal_conditioned_trpc_modulates_rgb_and_learns_end_to_end():
+    torch.manual_seed(29)
+    module = ThermalConditionedTRPC(
+        channels=16, embed_dim=8, num_prototypes=4,
+        epsilon=0.1, modulation_init_std=1e-3)
+    rgb = torch.randn(2, 16, 6, 8, requires_grad=True)
+    thermal = torch.randn(2, 16, 6, 8, requires_grad=True)
+    valid = torch.ones(2, 6, 8, dtype=torch.bool)
+    valid[:, -1] = False
+
+    output, aux = module(rgb, thermal, valid_mask=valid, return_aux=True)
+    assert output.shape == rgb.shape
+    assert not torch.allclose(output[:, :, :-1], rgb[:, :, :-1])
+    assert torch.equal(output[:, :, -1], rgb[:, :, -1])
+    assert torch.allclose(
+        aux['conditioning_attention'].sum(dim=-1), valid.flatten(1).float(),
+        atol=1e-6, rtol=1e-6)
+    assert 0.0 <= aux['conditioning_attention_entropy'].item() <= 1.0
+    assert 1.0 <= aux['conditioning_prototype_usage'].item() <= 4.0
+    assert aux['delta_ratio'].item() > 0
+    assert aux['modulation_ratio'].item() > aux['delta_ratio'].item()
+    assert torch.count_nonzero(module.film_out.weight) > 0
+    assert 'epsilon' not in dict(module.named_parameters())
+    assert not hasattr(module, 'rgb_extractor')
+    assert not hasattr(module, 'gate_mlp')
+
+    output.square().mean().backward()
+    required = (
+        ('rgb input', rgb),
+        ('thermal input', thermal),
+        ('RGB query', module.rgb_query.weight),
+        ('Thermal extractor', module.thermal_extractor.embed.weight),
+        ('Thermal assignment', module.thermal_extractor.assignment.weight),
+        ('Thermal key', module.thermal_key.weight),
+        ('Thermal value', module.thermal_value.weight),
+        ('FiLM output', module.film_out.weight),
+    )
+    for name, tensor in required:
+        _assert_nonzero_finite_gradient(tensor, name)
+
+    try:
+        module(rgb, torch.randn(2, 16, 3, 4))
+    except ValueError as error:
+        assert 'requires equal RGB/Thermal shapes' in str(error)
+    else:
+        raise AssertionError('conditioning TRPC accepted mismatched shapes')
+
+
 def test_same_stage_trpc_in_fusion_slot_has_no_clfm_modules():
     layer = FusionLayer(
         in_channels=32,
@@ -230,16 +279,20 @@ def test_same_stage_trpc_in_fusion_slot_has_no_clfm_modules():
         use_clfm=[],
         use_trpc=True,
         trpc_cfg=dict(
-            same_stage=True,
+            variant='thermal_conditioning',
             num_prototypes=4,
             embed_dim=16,
             targetness_loss_weight=0.1,
-            diversity_loss_weight=0.01),
+            diversity_loss_weight=0.0),
         usepoolup=[])
     assert layer.trpc_same_stage
+    assert layer.trpc_variant == 'thermal_conditioning'
     assert not hasattr(layer, 'idwt_layers')
     assert all(
-        isinstance(module.visible_upsample, torch.nn.Identity)
+        isinstance(module, ThermalConditionedTRPC)
+        for module in layer.trpc_layers)
+    assert all(
+        not hasattr(module, 'visible_upsample')
         for module in layer.trpc_layers)
 
     visible = [torch.randn(2, 32, 10, 14), torch.randn(2, 32, 6, 8)]
@@ -255,6 +308,8 @@ def test_same_stage_trpc_in_fusion_slot_has_no_clfm_modules():
     assert [tuple(feature.shape) for feature in features] == [
         (2, 32, 10, 14), (2, 32, 6, 8)]
     assert 'loss_trpc_targetness' in aux
+    assert 'trpc_delta_ratio' in aux
+    assert 'trpc_conditioning_attention_entropy' in aux
 
 
 def test_same_stage_trpc_preserves_control_hofm_initialization():
@@ -272,11 +327,11 @@ def test_same_stage_trpc_preserves_control_hofm_initialization():
     treatment = FusionLayer(
         use_trpc=True,
         trpc_cfg=dict(
-            same_stage=True,
+            variant='thermal_conditioning',
             num_prototypes=4,
             embed_dim=16,
             targetness_loss_weight=0.1,
-            diversity_loss_weight=0.01),
+            diversity_loss_weight=0.0),
         **common)
 
     control_state = control.hofm_layers.state_dict()

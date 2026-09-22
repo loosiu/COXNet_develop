@@ -10,75 +10,65 @@ The first cross-stage TRPC implementation is retained in `TRPC.py` only for
 checkpoint and result reproduction. Its learned residual was found to be
 effectively inactive; see the [same-stage design and diagnosis](trpc_same_stage_analysis_ko.md).
 
-## Architecture
+## Primary architecture: Thermal-conditioned same-stage TRPC
 
 ```text
-RGB, Thermal
-  -> task-learned RGB and objectness-supervised Thermal prototypes (P_R, P_T)
-  -> cosine mutual top-1 matching
-  -> detached Thermal reference guidance
-  -> gated residual calibration of RGB prototypes only
-  -> reconstruction with the RGB spatial assignment map
-  -> original AAM/HOFM and DSR/MSF
+Thermal feature -> K learned scene prototypes -> key/value
+RGB feature at each location -> query -> soft attention over Thermal prototypes
+Thermal condition -> spatial FiLM scale/shift of the local RGB feature
+calibrated RGB + original Thermal -> original AAM/HOFM and DSR/MSF
 ```
 
 The main equations are:
 
 ```text
-P_T_ref = stopgrad(P_T)
-G_T     = Match(P_R, P_T_ref) P_T_ref
-alpha   = sigmoid(MLP[P_R, G_T, |P_R - G_T|])
-P_R_cal = P_R + alpha * phi(G_T - P_R)
-F_R_cal = F_R + lambda * A_R Delta_P_R
+P_T       = Pool_K(F_T)
+a(x)      = softmax(q(F_R(x)) k(P_T)^T / sqrt(d))
+h_T(x)    = sum_k a_k(x) v(P_T^k)
+[s(x),b(x)] = MLP(h_T(x))
+F_R_cal(x)  = F_R(x) + epsilon [tanh(s(x)) LN(F_R(x)) + tanh(b(x))]
 ```
 
-Thermal supplies **what** semantic correction is useful. The RGB assignment
-map supplies **where** to reconstruct it. Thermal coordinates are never copied
-directly into RGB before alignment.
+The prototypes summarize the Thermal scene; they are not claimed to be object
+correspondences. RGB spatial structure remains at the original RGB location,
+and AAM remains responsible for spatial alignment.
 
 ## Optimization contract
 
-- The calibration path cannot send detector gradients into the thermal
-  prototypes (`P_T_ref = stopgrad(P_T)`).
-- The thermal backbone still learns through the unchanged downstream
-  AAM/HOFM detector path.
+- Detector gradients flow through the complete conditioning path, including
+  the Thermal prototype extractor. There is no `detach()`.
 - The thermal objectness head is supervised using thermal-coordinate GT.
-- RGB objectness is task-learned; thermal GT is not imposed at potentially
-  displaced RGB coordinates.
-- The final residual projection is zero-initialized, so iteration-zero TRPC is
-  exactly the incoming same-stage RGB feature. In the legacy cross-stage config,
-  it is the retained DeConv output.
-- Prototype diversity is a weak embedding de-correlation loss, not a hard
-  spatial orthogonality constraint.
+- There is no RGB objectness gate, hard prototype matching, matching confidence,
+  or prototype-alignment loss.
+- `epsilon=0.1` is fixed. The FiLM output has a small non-zero initialization
+  (`std=1e-3`), so its learning path is active at the first step.
+- Prototype diversity loss is disabled in the primary config; detection loss
+  and weak Thermal targetness are the only objectives for the new path.
 
 ## Losses and diagnostics
 
-The detector objective adds:
+The detector objective adds only:
 
 - `loss_trpc_targetness`: balanced focal loss on thermal box support.
-- `loss_trpc_diversity`: weak RGB/Thermal prototype collapse prevention.
 
 The log also reports:
 
-- `trpc_match_rate`, `trpc_match_confidence`
-- `trpc_gate_mean`, `trpc_delta_ratio`
-- `trpc_proto_rgb_cos_before`, `trpc_proto_rgb_cos_after`
-- `trpc_attention_entropy_rgb`, `trpc_attention_entropy_thermal`
-- `trpc_prototype_usage`, with modality-specific variants
+- `trpc_conditioning_attention_entropy`
+- `trpc_conditioning_prototype_usage`
+- `trpc_conditioning_rms`, `trpc_film_raw_rms`
+- `trpc_film_scale_abs_mean`, `trpc_film_shift_abs_mean`
+- `trpc_modulation_ratio`: modulation before fixed epsilon
+- `trpc_delta_ratio`: final feature change after fixed epsilon
+- `trpc_realized_delta_ratio`: change retained after the residual addition
 
 `delta_ratio` is the relative feature-change magnitude
-`||F_R_cal - F_R||_2 / (||F_R||_2 + eps)`. The prototype cosine values are
-computed before the output projection, RGB assignment reconstruction, and
-residual scaling. They are internal diagnostics and do not establish that the
-actual AAM input was semantically calibrated. Likewise, `match_rate` only
-reports how often mutual top-k pairing exists. It is not correspondence
-accuracy, and the current matcher has no semantic-similarity rejection
-threshold. Mutual top-1 is intentionally retained for the first experiment;
-relax or reject matches only through a controlled ablation.
+`||F_R_cal - F_R||_2 / (||F_R||_2 + eps)`. Attention statistics diagnose token
+use; they are not correspondence accuracy or evidence of domain calibration.
 
-Claims about domain calibration require separate feature-level measurements,
-cross-modal correspondence accuracy, AAM alignment error, and downstream
-detection results. The diagnostics above are insufficient on their own.
+The legacy `TRPC.py` config still uses mutual matching, detached Thermal
+references, RGB objectness reconstruction, and zero-initialized projection.
+It also logs pre-projection residual RMS, post-projection RMS, pre-scale map
+ratio, and final `delta_ratio` so the attenuation stage can be identified.
 
 The same padding mask is supplied during training and `simple_test`, so padded
 feature cells do not participate in prototype extraction or reconstruction.

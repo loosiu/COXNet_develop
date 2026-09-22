@@ -1,9 +1,10 @@
 """Thermal-Referenced Prototype Calibration (TRPC).
 
 TRPC replaces COXNet's CLFM before the original AAM while deliberately leaving
-spatial alignment to AAM.  The primary same-stage variant pairs equal-stride
-RGB/Thermal features directly and contains no CLFM or DeConv.  The legacy
-cross-stage variant is kept only to reproduce the first experiment:
+spatial alignment to AAM. The primary same-stage variant treats Thermal
+prototypes as scene-conditioning tokens and applies spatial FiLM modulation to
+RGB. The legacy mutual-matching variant is kept to reproduce the first
+experiment.
 
     RGB, Thermal -> learned prototypes -> mutual semantic matching
                  -> Thermal-guided RGB prototype residual
@@ -169,7 +170,7 @@ class ObjectAwarePrototypeExtractor(nn.Module):
 
 
 class TRPC(nn.Module):
-    """Asymmetric Thermal -> RGB prototype calibration before COXNet AAM."""
+    """Legacy RGB/Thermal prototype-matching TRPC."""
 
     def __init__(self, channels=256, embed_dim=64, num_prototypes=8,
                  match_temperature=0.2, match_topk=1, mutual_matching=True,
@@ -343,8 +344,17 @@ class TRPC(nn.Module):
             return rgb_calibrated
         with torch.no_grad():
             base = rgb_up.float().pow(2).mean(dim=(1, 2, 3)).sqrt().clamp_min(1e-6)
+            prototype_residual_rms = delta_prototype.float().pow(2).mean().sqrt()
+            projected_prototype_rms = delta_rgb.float().pow(2).mean().sqrt()
+            delta_map_norm = delta_map.float().pow(2).mean(
+                dim=(1, 2, 3)).sqrt()
+            scaled_delta = self.residual_scale.float() * delta_map.float()
+            scaled_delta_norm = scaled_delta.pow(2).mean(
+                dim=(1, 2, 3)).sqrt()
             change = (rgb_calibrated.float() - rgb_up.float()).pow(2).mean(
                 dim=(1, 2, 3)).sqrt()
+            delta_map_ratio = (delta_map_norm / base).mean()
+            scaled_delta_ratio = (scaled_delta_norm / base).mean()
             delta_ratio = (change / base).mean()
             matched = match_weights.sum(dim=-1) > 0
             before = F.cosine_similarity(p_rgb.float(), guidance, dim=-1)
@@ -375,6 +385,10 @@ class TRPC(nn.Module):
             match_confidence=confidence.mean().detach(),
             gate_mean=alpha.mean().detach(),
             residual_scale=self.residual_scale.detach(),
+            prototype_residual_rms=prototype_residual_rms.detach(),
+            projected_prototype_rms=projected_prototype_rms.detach(),
+            delta_map_ratio=delta_map_ratio.detach(),
+            scaled_delta_ratio=scaled_delta_ratio.detach(),
             delta_ratio=delta_ratio.detach(),
             proto_rgb_cos_before=proto_cos_before.detach(),
             proto_rgb_cos_after=proto_cos_after.detach(),
@@ -385,4 +399,146 @@ class TRPC(nn.Module):
             prototype_usage=((usage_rgb + usage_thermal) * 0.5).detach(),
             diversity_loss=(self.prototype_diversity_loss(p_rgb) +
                             self.prototype_diversity_loss(p_thermal)) * 0.5)
+        return rgb_calibrated, aux
+
+
+class ThermalConditionedTRPC(nn.Module):
+    """Same-stage Thermal-token conditioning with spatial RGB modulation.
+
+    Thermal prototypes summarize the current scene; they are not interpreted
+    as object correspondences. Every RGB location softly reads those tokens and
+    predicts feature-wise scale and shift terms. No hard matching, confidence
+    gate, RGB objectness gate, stop-gradient, CLFM, or DeConv is used.
+    """
+
+    def __init__(self, channels=256, embed_dim=64, num_prototypes=8,
+                 objectness_prior=0.1, objectness_bias=1.0,
+                 epsilon=0.1, modulation_init_std=1e-3):
+        super().__init__()
+        if channels < 1 or embed_dim < 1 or num_prototypes < 1:
+            raise ValueError('channels, embed_dim and num_prototypes must be >= 1')
+        if epsilon <= 0:
+            raise ValueError('epsilon must be > 0')
+        if modulation_init_std <= 0:
+            raise ValueError('modulation_init_std must be > 0')
+
+        self.channels = int(channels)
+        self.embed_dim = int(embed_dim)
+        self.num_prototypes = int(num_prototypes)
+        self.register_buffer('epsilon', torch.tensor(float(epsilon)))
+
+        self.thermal_extractor = ObjectAwarePrototypeExtractor(
+            channels, embed_dim, num_prototypes,
+            objectness_prior, objectness_bias)
+        self.rgb_query = nn.Conv2d(channels, embed_dim, 1, bias=False)
+        self.rgb_query_norm = ChannelLayerNorm(embed_dim)
+        self.thermal_key = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.thermal_value = nn.Linear(embed_dim, embed_dim, bias=False)
+
+        hidden = max(embed_dim, 32)
+        self.film_hidden = nn.Sequential(
+            nn.Linear(embed_dim, hidden), nn.GELU())
+        self.film_out = nn.Linear(hidden, 2 * channels)
+        nn.init.normal_(self.film_out.weight, mean=0.0,
+                        std=float(modulation_init_std))
+        nn.init.zeros_(self.film_out.bias)
+        self.rgb_norm = ChannelLayerNorm(channels)
+
+    @staticmethod
+    def _valid_flat(valid_mask, shape, device):
+        b, _, h, w = shape
+        if valid_mask is None:
+            return torch.ones(b, h * w, dtype=torch.bool, device=device)
+        if tuple(valid_mask.shape) == (b, 1, h, w):
+            valid_mask = valid_mask[:, 0]
+        if tuple(valid_mask.shape) != (b, h, w):
+            raise ValueError(
+                f'conditioning valid mask {tuple(valid_mask.shape)} does not '
+                f'match {(b, h, w)}')
+        return valid_mask.reshape(b, h * w).bool()
+
+    def forward(self, rgb, thermal, valid_mask=None, return_aux=False):
+        if rgb.shape != thermal.shape:
+            raise ValueError(
+                'Thermal-conditioned same-stage TRPC requires equal RGB/'
+                f'Thermal shapes, got {tuple(rgb.shape)} and '
+                f'{tuple(thermal.shape)}')
+        if rgb.shape[1] != self.channels:
+            raise ValueError('TRPC channel mismatch')
+
+        b, _, h, w = rgb.shape
+        valid = self._valid_flat(valid_mask, rgb.shape, rgb.device)
+        p_thermal, a_t_pool, a_t_where, o_thermal = self.thermal_extractor(
+            thermal, valid_mask)
+
+        query = self.rgb_query_norm(self.rgb_query(rgb)).float()
+        query = query.flatten(2).transpose(1, 2)                    # B,N,D
+        key = self.thermal_key(p_thermal.float())                  # B,K,D
+        value = self.thermal_value(p_thermal.float())              # B,K,D
+        logits = torch.bmm(query, key.transpose(1, 2)) / math.sqrt(
+            self.embed_dim)
+        attention = logits.softmax(dim=-1)
+        attention = attention * valid.unsqueeze(-1).to(attention.dtype)
+        conditioning = torch.bmm(attention, value)                 # B,N,D
+
+        film_raw = self.film_out(self.film_hidden(conditioning))   # B,N,2C
+        scale_raw, shift_raw = film_raw.chunk(2, dim=-1)
+        scale = scale_raw.tanh().transpose(1, 2).reshape(b, self.channels, h, w)
+        shift = shift_raw.tanh().transpose(1, 2).reshape(b, self.channels, h, w)
+        valid_map = valid.reshape(b, 1, h, w).to(scale.dtype)
+        modulation = (
+            scale * self.rgb_norm(rgb).float() + shift) * valid_map
+        delta = self.epsilon.float() * modulation
+        rgb_calibrated = rgb + delta.to(rgb.dtype)
+
+        if not return_aux:
+            return rgb_calibrated
+
+        with torch.no_grad():
+            base = rgb.float().pow(2).mean(
+                dim=(1, 2, 3)).sqrt().clamp_min(1e-6)
+            modulation_norm = modulation.pow(2).mean(
+                dim=(1, 2, 3)).sqrt()
+            delta_norm = delta.pow(2).mean(dim=(1, 2, 3)).sqrt()
+            realized_delta_norm = (
+                rgb_calibrated.float() - rgb.float()).pow(2).mean(
+                    dim=(1, 2, 3)).sqrt()
+            valid_count = valid.sum().clamp_min(1)
+            attention_entropy = -(attention * attention.clamp_min(
+                1e-12).log()).sum(dim=-1)
+            if self.num_prototypes > 1:
+                attention_entropy = attention_entropy / math.log(
+                    self.num_prototypes)
+            attention_entropy = (
+                attention_entropy * valid.to(attention_entropy.dtype)
+            ).sum() / valid_count
+            mass = attention.sum(dim=1)
+            probability = mass / mass.sum(
+                dim=-1, keepdim=True).clamp_min(1e-12)
+            conditioning_usage = (-(
+                probability * probability.clamp_min(1e-12).log()
+            ).sum(dim=-1)).exp().mean()
+
+        aux = dict(
+            thermal_objectness_logits=o_thermal,
+            thermal_objectness=o_thermal.sigmoid().detach(),
+            thermal_pool_attention=a_t_pool.detach(),
+            thermal_prototypes=p_thermal.detach(),
+            conditioning_attention=attention.detach(),
+            conditioning=conditioning.detach(),
+            epsilon=self.epsilon.detach(),
+            conditioning_attention_entropy=attention_entropy.detach(),
+            conditioning_prototype_usage=conditioning_usage.detach(),
+            attention_entropy_thermal=TRPC.normalized_attention_entropy(
+                a_t_pool).detach(),
+            prototype_usage_thermal=TRPC.effective_prototype_usage(
+                a_t_where).detach(),
+            conditioning_rms=conditioning.float().pow(2).mean().sqrt().detach(),
+            film_raw_rms=film_raw.float().pow(2).mean().sqrt().detach(),
+            film_scale_abs_mean=scale.float().abs().mean().detach(),
+            film_shift_abs_mean=shift.float().abs().mean().detach(),
+            modulation_ratio=(modulation_norm / base).mean().detach(),
+            delta_ratio=(delta_norm / base).mean().detach(),
+            realized_delta_ratio=(realized_delta_norm / base).mean().detach(),
+            diversity_loss=TRPC.prototype_diversity_loss(p_thermal))
         return rgb_calibrated, aux

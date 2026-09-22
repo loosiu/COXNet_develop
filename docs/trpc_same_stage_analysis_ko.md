@@ -3,8 +3,9 @@
 ## 결론
 
 CLFM을 완전히 제거한 same-stage TRPC 경로를 구현했다. RGB와 Thermal은
-모두 stride 8/16/32/64 feature를 사용하며, 각 동일 stride 쌍에 TRPC를
-적용한 뒤 기존 AAM/HOFM으로 전달한다. 이 경로에는 DWT, IDWT, 주파수
+모두 stride 8/16/32/64 feature를 사용한다. Thermal scene prototype을
+각 RGB 위치에서 soft attention으로 읽고 spatial FiLM으로 RGB를 조절한 뒤
+기존 AAM/HOFM으로 전달한다. 이 경로에는 DWT, IDWT, 주파수
 융합, CLFM DeConv, shape 보정용 interpolation이 없다.
 
 다만 기존 cross-stage TRPC 체크포인트를 분석한 결과, **검출 성능은
@@ -23,19 +24,19 @@ DeConv의 영향을 제거하고 TRPC 자체를 검증하기 위한 더 깨끗�
 | RGB-Thermal pairing | cross-level | cross-level | **same-level** |
 | CLFM 주파수 연산 | 사용 | 제거 | 제거 |
 | CLFM DeConv | 사용 | 유지 | **제거** |
-| Prototype calibration | 없음 | 사용 | 사용 |
+| Prototype 사용 방식 | 없음 | hard mutual matching | **Thermal conditioning** |
 | 이후 AAM/HOFM | 유지 | 유지 | 유지 |
 
 Same-stage 경로는 다음과 같다.
 
 ```text
-RGB P3/P4/P5/P6 ─┐
-                  ├─ same-stride TRPC ─ AAM/HOFM ─ detector head
-T   P3/P4/P5/P6 ─┘
+Thermal P3/P4/P5/P6 -> K scene prototypes -> key/value
+RGB P3/P4/P5/P6     -> location query -> soft attention
+                    -> spatial FiLM(RGB) -> AAM/HOFM -> detector head
 ```
 
 `TRPC_same_stage.py`는 RGB FPN의 `start_level`을 2에서 1로 바꾼다.
-TRPC 내부의 `visible_upsample`은 `Identity`이며, 양 모달 feature shape가
+새 TRPC에는 `visible_upsample` 자체가 없으며, 양 모달 feature shape가
 다르면 interpolation하지 않고 즉시 오류를 낸다. 따라서 잘못된 level
 pairing을 조용히 허용하지 않는다.
 
@@ -47,10 +48,10 @@ pairing을 조용히 허용하지 않는다.
 |---|---:|---:|---:|
 | COXNet CLFM | 71,335,628 | 10,493,952 | 1,050,624 |
 | Cross-stage TRPC | 62,198,552 | 1,356,876 | 1,050,624 |
-| **Same-stage TRPC** | **61,279,256** | **306,252** | **0** |
+| **Same-stage conditional TRPC** | **61,294,320** | **321,316** | **0** |
 | Same-stage no-TRPC control | 60,973,004 | 0 | 0 |
 
-Same-stage TRPC core는 기존 CLFM보다 약 97.1% 작고, 전체 모델은 약
+Same-stage TRPC core는 기존 CLFM보다 약 96.9% 작고, 전체 모델은 약
 14.1% 작다. 이는 파라미터 감소이며 FPS 또는 FLOPs 개선을 직접 의미하지
 않는다.
 
@@ -95,14 +96,41 @@ AP50은 보고 자릿수에서 완전히 같고 세부 구간의 차이도 매�
 AAM/HOFM 경로에 의해 유지됐다는 해석을 강하게 지지한다. 단, 이는 seed 0
 best checkpoint에 대한 추론 개입이며 별도 학습 대조군을 대체하지 않는다.
 
-### 2. 보정 신호가 여러 곱셈 항에서 동시에 약해진다
+### 2. Gate 자체가 닫힌 것은 아니며, projection이 극도로 작게 학습됐다
 
-실제 residual에는 RGB objectness, mutual-match confidence, channel gate,
-output projection, residual scale이 연속으로 적용된다. 기존 checkpoint에서
-평균 confidence는 0.065, confidence가 반영된 gate 평균은 0.033 수준이었다.
-RGB objectness까지 곱해지므로 zero-initialized projection이 학습 중 거의
-열리지 않으면 모든 상위 prototype 경로의 detector gradient도 함께
-약해진다.
+`gate_mean=0.033`은 confidence가 이미 곱해진 값이다. 평균 confidence
+`0.065`와 단순 비율을 계산하면 sigmoid gate는 약 0.51이므로 gate 자체가
+0으로 포화됐다고 볼 수 없다. 두 값을 다시 곱해 감쇠를 계산하면 안 된다.
+
+Checkpoint의 `delta_to_rgb.weight`는 저장값과 로드값이 정확히 같았고 모든
+원소가 0이 아니었다. 하지만 level별 weight norm은 각각 `1.07e-4`,
+`3.17e-6`, `1.25e-6`, `8.20e-7`에 불과했다. 즉 로드 누락이 아니라
+projection이 0에서 아주 조금만 벗어난 상태다.
+
+같은 128장 probe에서 residual 단계별 평균은 다음과 같다.
+
+| 단계 | 평균 |
+|---|---:|
+| projection 전 prototype residual RMS | 7.51e-3 |
+| `delta_to_rgb` projection 후 RMS | 4.74e-8 |
+| 공간 재구성 후, scale 전 feature ratio | 4.50e-9 |
+| scale 적용 후 실제 출력 변화 ratio | 7.30e-10 |
+
+따라서 신호가 가장 크게 사라진 지점은 `delta_to_rgb` projection이다.
+
+실제 train batch에서 detection loss만 backward하고 저장된 optimizer state로
+한 step을 적용한 결과는 다음과 같다.
+
+| level | gradient norm | optimizer step 변화 norm |
+|---:|---:|---:|
+| 0 | 3.15e-5 | 3.99e-8 |
+| 1 | 7.82e-10 | 5.58e-11 |
+| 2 | 1.20e-9 | 1.87e-11 |
+| 3 | 5.13e-9 | 1.42e-11 |
+
+따라서 기존 residual 소실의 직접적인 병목은 특히 상위 level의 거의 0인
+projection과 gradient다. confidence, RGB objectness, zero initialization 등이
+이 상태에 기여했을 수 있지만 단일 원인으로 확정하지 않는다.
 
 특히 RGB가 약하고 Thermal만 선명한 위치에서는 RGB objectness도 낮을 수
 있다. 현재 재투영은 바로 그 위치의 Thermal 보정을 RGB objectness로 다시
@@ -145,17 +173,39 @@ diversity loss로 학습되고, raw Thermal feature/backbone은 별도의 AAM/HO
 경로로 detector gradient를 받는다. Reference 안정성과 의미 표현 학습 사이의
 trade-off이며, stop-gradient 자체가 좋은 Thermal reference를 보장하지 않는다.
 
-## Same-stage가 해결하는 것과 해결하지 않는 것
+## 새 Thermal-conditioning 설계
+
+새 경로는 RGB prototype과 hard matching을 만들지 않는다.
+
+```text
+P_T = Pool_K(F_T)
+a(x) = softmax(q(F_R(x)) k(P_T)^T / sqrt(d))
+h_T(x) = sum_k a_k(x) v(P_T^k)
+[s(x), b(x)] = MLP(h_T(x))
+F_R_cal(x) = F_R(x) + epsilon [tanh(s(x)) LN(F_R(x)) + tanh(b(x))]
+```
+
+- Thermal prototype은 특정 객체의 정답 표현이 아니라 장면 조건 token이다.
+- mutual top-1, confidence, RGB objectness gate를 사용하지 않는다.
+- Thermal extractor에 `detach()`하지 않아 detection gradient가 직접 흐른다.
+- `epsilon=0.1`은 고정하고 FiLM 출력은 `std=1e-3` 비영 초기화한다.
+- prototype alignment/diversity loss는 사용하지 않고 detection loss와 약한
+  Thermal targetness만 사용한다.
+- RGB의 위치별 원 feature와 modulation이 곱해지므로 기존 선형 재투영과
+  동일한 rank-8 residual 제약은 없다. K=8 조건 정보 병목은 남는다.
+
+## 새 설계가 해결하는 것과 해결하지 않는 것
 
 | 항목 | Same-stage 변경의 효과 |
 |---|---|
 | CLFM/DeConv와 TRPC 효과의 혼재 | 제거 |
 | cross-level semantic 차이 | 제거 |
 | level 해상도 보정/interpolation | 제거 |
-| residual 비활성화 | **해결 보장 없음** |
-| semantic matching 정확성 | **해결 안 됨** |
-| RGB objectness에 의한 억제 | **해결 안 됨** |
-| rank-8 국소 정보 제한 | **해결 안 됨** |
+| zero projection으로 인한 초기 gradient 차단 | 작은 비영 초기화로 제거 |
+| semantic matching 정확성 | matching 가정 자체를 제거 |
+| RGB objectness에 의한 억제 | 제거 |
+| 선형 rank-8 residual 제한 | spatial FiLM으로 완화; K 병목은 유지 |
+| 유용한 Thermal 조건 학습 | **성능 실험으로 확인 필요** |
 
 따라서 same-stage 구조의 목적은 성능 향상을 미리 주장하는 것이 아니라,
 TRPC의 순수 기여를 검증 가능한 형태로 만드는 것이다.
@@ -184,8 +234,8 @@ TRPC가 유효하다고 판단하려면 최소한 다음 세 조건이 함께 �
 - `TRPC_same_stage > same_stage_no_trpc`가 seed에 걸쳐 재현될 것.
 - `delta_ratio`가 수치적으로 의미 있는 크기로 열리고 residual-off에서
   성능 또는 목표 오류 지표가 악화될 것.
-- 실제 RGB-Thermal 객체 대응 정확도 개선과 밀집 위치 오류 감소가 같은
-  사례에서 연결될 것.
+- Thermal-prototype shuffle에서 성능이 악화되고 밀집 위치 오류 감소가
+  같은 사례에서 확인될 것.
 
 반대로 control과 같고 residual-off에도 변화가 없다면, prototype 수나 loss를
 추가하기 전에 현재 multiplicative gate와 재투영 설계를 수정하거나 TRPC를
@@ -193,15 +243,16 @@ TRPC가 유효하다고 판단하려면 최소한 다음 세 조건이 함께 �
 
 ## 검증 상태
 
-- TRPC 단위 테스트 10개 통과.
+- TRPC 단위 테스트 11개 통과.
 - 전체 detector에서 두 모달 feature shape가 모든 level에서 동일함을 확인:
   `(16,20)`, `(8,10)`, `(4,5)`, `(2,3)`.
-- same-stage TRPC에 DeConv/IDWT 파라미터가 없음을 확인.
-- zero initialization에서 TRPC 출력이 입력 RGB feature와 정확히 같음을 확인.
+- same-stage TRPC에 DeConv/IDWT/RGB prototype matcher가 없음을 확인.
+- 초기 `delta_ratio`가 비영 값이고 padding 위치의 RGB가 보존됨을 확인.
 - 같은 seed에서 control과 treatment의 AAM/HOFM 초기값이 동일함을 확인.
-- 전체 detector의 synthetic `forward_train`/backward를 통과하고 첫 step의
-  `delta_to_rgb` gradient가 유한한 비영 값임을 확인.
-- 아직 `TRPC_same_stage.py`와 control의 새 학습은 수행하지 않았다.
+- 전체 detector와 실제 batch size 8의 GPU 1 forward/backward/optimizer
+  step을 통과하고 Thermal extractor와 FiLM 경로의 비영 gradient를 확인.
+- GPU smoke 초기 `delta_ratio=2.13e-4`, FiLM gradient norm `1.16e-2`,
+  optimizer step 변화 norm `1.16e-4`, 최대 할당 메모리 8,942 MiB.
 
 기존 cross-stage checkpoint는 RGB FPN level 구성과 TRPC 파라미터 구성이
 달라 same-stage 모델에 재사용할 수 없다.

@@ -2,8 +2,9 @@
 from .res_layer import ResLayer, SimplifiedBasicBlock
 from .fusion_strategy import FusionLayer
 from .fusion_layer_coxnet import COXFusionLayer
-from .trpc import TRPC
+from .trpc import TRPC, ThermalConditionedTRPC
 
 __all__ = [
-    'ResLayer', 'SimplifiedBasicBlock', 'FusionLayer', 'COXFusionLayer', 'TRPC'
+    'ResLayer', 'SimplifiedBasicBlock', 'FusionLayer', 'COXFusionLayer', 'TRPC',
+    'ThermalConditionedTRPC'
 ]

@@ -4,8 +4,8 @@ import torch.nn.functional as F
 import einops
 from mmcv.runner import BaseModule
 from .wavelet_process import DWTC
-from .trpc import (TRPC, make_padding_mask, build_box_targets,
-                   balanced_binary_focal_loss)
+from .trpc import (TRPC, ThermalConditionedTRPC, make_padding_mask,
+                   build_box_targets, balanced_binary_focal_loss)
 
 
 class FusionLayer(nn.Module):
@@ -75,11 +75,23 @@ class FusionLayer(nn.Module):
         self.trpc_diversity_loss_weight = float(
             _trpc_cfg.pop('diversity_loss_weight', 0.01))
         self.trpc_focal_gamma = float(_trpc_cfg.pop('focal_gamma', 2.0))
+        self.trpc_variant = _trpc_cfg.pop('variant', 'matching')
+        if self.trpc_variant not in ('matching', 'thermal_conditioning'):
+            raise ValueError(f'Unsupported TRPC variant: {self.trpc_variant}')
         self.trpc_same_stage = bool(_trpc_cfg.get('same_stage', False))
+        if self.trpc_variant == 'thermal_conditioning':
+            self.trpc_same_stage = True
+            _trpc_cfg.pop('same_stage', None)
         self.last_trpc_aux = None
         if self.use_trpc:
             self.trpc_layers = nn.ModuleList()
-            if self.trpc_same_stage:
+            if self.trpc_variant == 'thermal_conditioning':
+                with torch.random.fork_rng(devices=[]):
+                    for i in range(num_layers):
+                        torch.manual_seed(94001 + i)
+                        self.trpc_layers.append(ThermalConditionedTRPC(
+                            channels=in_channels, **_trpc_cfg))
+            elif self.trpc_same_stage:
                 # Do not instantiate DWTC or consume its RNG stream. Keeping
                 # TRPC initialization inside fork_rng also leaves downstream
                 # HOFM initialization identical to a same-stage HOFM-only
@@ -192,10 +204,17 @@ class FusionLayer(nn.Module):
                 monitor_keys = (
                     'match_rate', 'match_confidence', 'gate_mean',
                     'residual_scale', 'delta_ratio',
+                    'prototype_residual_rms', 'projected_prototype_rms',
+                    'delta_map_ratio', 'scaled_delta_ratio',
                     'proto_rgb_cos_before', 'proto_rgb_cos_after',
                     'attention_entropy_rgb', 'attention_entropy_thermal',
                     'prototype_usage', 'prototype_usage_rgb',
-                    'prototype_usage_thermal')
+                    'prototype_usage_thermal', 'epsilon',
+                    'conditioning_attention_entropy',
+                    'conditioning_prototype_usage', 'conditioning_rms',
+                    'film_raw_rms', 'film_scale_abs_mean',
+                    'film_shift_abs_mean', 'modulation_ratio',
+                    'realized_delta_ratio')
                 for key in monitor_keys:
                     values = [aux[key] for aux in trpc_aux.values() if key in aux]
                     if values:

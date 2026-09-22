@@ -13,10 +13,11 @@
 COXNet is an RGBT tiny object detection framework that jointly addresses cross-modal fusion, misalignment, and scale variation in drone-based multi-spectral imagery. The core innovations are: **(1) CLFM** (Cross-Layer Fusion Module), which leverages wavelet decomposition to align and fuse complementary RGB and thermal features across pyramid levels; **(2) DASR** (Dynamic Adaptive Scale Refinement), which recalibrates spatial correspondences and integrates multi-scale contextual cues for robust tiny object localization; and **(3) a GeoShape-based label assignment strategy** that better fits the irregular geometry of tiny aerial targets, improving recall under severe scale imbalance.
 
 This repository also provides **TRPC**, which replaces the complete CLFM with
-same-stage thermal-referenced prototype calibration. TRPC matches task-learned RGB prototypes with
-objectness-supervised thermal prototypes, calibrates only the RGB prototypes
-using detached thermal references, reconstructs the residual at RGB-assigned locations, and
-then passes the calibrated RGB feature to the original AAM/HOFM.
+same-stage Thermal-conditioned prototype calibration. It summarizes the
+Thermal scene with learned prototypes, lets every RGB location softly read the
+prototypes, and uses spatial FiLM scale/shift to modulate the local RGB feature
+before the original AAM/HOFM. It does not assume object-level prototype
+correspondence.
 
 TRPC preserves the original AAM, DSR/MSF, detector head, and training recipe.
 Its primary config pairs equal-stride RGB/Thermal features and contains no
