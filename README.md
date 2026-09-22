@@ -16,11 +16,13 @@ This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
 The current method is **OEPC (Object-centric Evidential Prototype
 Calibration)**. RGB and Thermal FPNs both start at level 1 and therefore
-produce equal-stride P3/P4/P5/P6 features. OEPC first selects object candidates
-in Thermal P3, builds predicted foreground-weighted object-minus-context
-descriptors, and then searches a soft local RGB bag for each candidate. An
-evidential utility router calibrates RGB only. The unchanged Thermal feature
-and calibrated RGB feature then enter the original AAM/HOFM.
+produce equal-stride P3/P4/P5/P6 features. Balanced OEPC selects candidates
+independently in RGB and Thermal P3 rather than assuming Thermal is always the
+reliable source. Thermal candidates define possible RGB bags, while RGB
+candidates read possible Thermal bags. Separate foreground heads build
+object-minus-context descriptors, and an uncertainty-informed router
+calibrates RGB only. The unchanged Thermal feature and calibrated RGB feature
+then enter the original AAM/HOFM.
 
 The OEPC path contains no cross-stage pairing, transposed convolution, DWT,
 IDWT, or CLFM frequency fusion. The first controlled config applies OEPC at P3,
@@ -32,36 +34,32 @@ and [the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
 ### OEPC data flow
 
 ```text
-Thermal P3 ── candidate selection ── weighted object-context descriptor ─┐
-                                                                        ├─ soft local RGB bag
-RGB P3 ─────────────────────────────────────────────────────────────────┘
-       ── EDL-informed utility router ── norm-capped RGB correction ── RGB_cal P3 ─┐
-                                                                                   ├─ AAM/HOFM
-Thermal P3 (unchanged) ─────────────────────────────────────────────────────────────┘
+Thermal P3 ── Thermal candidates ── object-context descriptor ── possible RGB bag ─┐
+                                                                                   ├─ union/support
+RGB P3 ────── RGB candidates ────────────────────── possible Thermal bag ───────────┘
+       ── uncertainty-informed router ── norm-capped RGB correction ── RGB_cal P3 ─┐
+                                                                                  ├─ AAM/HOFM
+Thermal P3 (unchanged) ────────────────────────────────────────────────────────────┘
 ```
 
 The calibration path uses predicted local evidence during both training and
 inference. Local attention includes a spatial-distance prior but predicts no
 offset and performs no feature warping. Candidate thresholding and top-k are
-performed in Thermal coordinates before RGB matching, so diffuse RGB
-attention cannot delete a confident Thermal candidate. RGB is exactly
-preserved outside predicted candidate supports, and each correction vector is
-explicitly capped relative to the local RGB feature magnitude.
+performed separately in each modality, and their probability maps are never
+added at the same unaligned coordinate. RGB is exactly preserved outside
+predicted candidate supports, and each correction vector is explicitly capped
+relative to the local RGB feature magnitude. A candidate with no reliable
+Thermal context cannot inject an absolute object prototype as a fallback.
 
-Thermal-coordinate GT box centers supervise candidate detection, while full
-boxes separately supervise Thermal foreground evidence. RGB evidence uses a
-misalignment-tolerant local bag and safe background outside every expanded GT
-region; other annotated people are never contrastive negatives. GT is not used
-to select inference-time calibration regions.
-
-For one sampled Thermal candidate per training batch, OEPC compares candidate
-removal and full-correction trial branches after AAM/HOFM and the detector
-head. Both counterfactuals reuse the normal detector's assignment. Their
-classification and localization loss difference, minus a residual penalty,
-is detached to supervise the router. A small non-detached trial detection loss
-keeps the residual path trainable even when the router initially suppresses a
-candidate. Evidential foreground probability and uncertainty are router
-inputs; there is no independent uncertainty-only route target.
+Thermal-coordinate GT box centers supervise Thermal candidates directly. RGB
+candidate and foreground heads use a fixed local bag, so learned matching
+attention cannot move a positive label. Thermal safe background excludes exact
+boxes; RGB safe background excludes boxes expanded by the allowed displacement.
+Other annotated people are never contrastive negatives. EDL is optional and,
+when enabled, supplies uncertainty to the router through a separate head. The
+balanced-core experiment disables detector counterfactual utility so the core
+path is trained end-to-end by the ordinary detection loss and small auxiliary
+losses.
 
 ---
 
@@ -69,16 +67,14 @@ inputs; there is no independent uncertainty-only route target.
 
 ### OEPC status
 
-OEPC has passed configuration construction, same-stage shape checks, CPU and
-GPU full-COXNet train forward/backward, padding identity, Thermal-input
-preservation, residual-cap checks, fixed-assignment counterfactual loss checks,
-and non-zero gradient checks for its candidate, contrastive, EDL, router, and
-RGB residual paths. Detection accuracy has not yet been reported; do not
-interpret structural validation as an AP improvement.
+Balanced OEPC has passed config construction, same-stage shape checks, CPU
+forward/backward, padding identity, Thermal-input preservation, residual-cap,
+dual-candidate, missing-context, and non-zero-gradient checks. Its three-seed
+training result is not yet available; structural validation must not be read as
+an AP improvement.
 
-The active P3 OEPC module has 92,999 parameters. In the current configs, the
-complete model has 61.07M parameters versus 71.34M for the original model with
-four CLFM blocks. Runtime and FPS must still be measured on the target GPU.
+The active P3 balanced OEPC module has 95,178 parameters. Runtime, complete
+model cost, and FPS must still be measured on the target GPU.
 
 ### Initial cross-stage TRPC three-seed result
 
@@ -212,10 +208,10 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
-**OEPC complete CLFM replacement, single GPU (seed 0)**
+**Balanced OEPC complete CLFM replacement, single GPU (seed 0)**
 
 ```bash
-python tools/train.py configs/coxnet/oepc/OEPC_same_stage.py \
+python tools/train.py configs/coxnet/oepc/OEPC_balanced_core.py \
     --seed 0 --deterministic
 ```
 
@@ -256,6 +252,7 @@ configs/coxnet/
 ├── coxnet_r50_fpn_1x_vtuav.py
 ├── coxnet_star_r50_fpn_1x_vtuav.py
 ├── oepc/
+│   ├── OEPC_balanced_core.py
 │   └── OEPC_same_stage.py
 └── trpc/
     ├── TRPC.py
@@ -269,7 +266,7 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/oepc/OEPC_same_stage.py \
+    configs/coxnet/oepc/OEPC_balanced_core.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```

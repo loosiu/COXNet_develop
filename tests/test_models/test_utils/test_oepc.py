@@ -49,7 +49,8 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
     assert torch.equal(output[outside], rgb[outside])
     assert not torch.allclose(output[support.expand_as(output)],
                               rgb[support.expand_as(rgb)])
-    assert aux['candidate_peaks'].sum(dim=(1, 2, 3)).max() <= 2
+    assert aux['thermal_candidate_peaks'].sum(dim=(1, 2, 3)).max() <= 2
+    assert aux['rgb_candidate_peaks'].sum(dim=(1, 2, 3)).max() <= 2
     assert 0.0 < aux['support_ratio'].item() < 1.0
     assert 0.0 <= aux['matching_confidence_mean'].item() <= 1.0
     assert 0.0 <= aux['transfer_mean'].item() <= 1.0
@@ -57,12 +58,15 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
     assert 0.0 <= aux['uncertainty_thermal_mean'].item() <= 1.0
     assert aux['delta_ratio'].item() > 0
     assert aux['residual_cap_ratio'].item() <= 1.0 + 1e-5
-    assert aux['utility_payload'] is not None
-    for key in ('candidate_loss', 'contrastive_loss', 'edl_loss'):
+    assert aux['utility_payload'] is None
+    assert aux['utility_sampled'].item() == 0
+    for key in (
+            'candidate_loss', 'foreground_loss', 'contrastive_loss',
+            'edl_loss'):
         assert torch.isfinite(aux[key]), key
 
     loss = output.square().mean()
-    loss = loss + aux['candidate_loss']
+    loss = loss + aux['candidate_loss'] + aux['foreground_loss']
     loss = loss + aux['contrastive_loss'] + aux['edl_loss']
     loss.backward()
     required = (
@@ -70,7 +74,12 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
         ('Thermal input', thermal),
         ('RGB embedding', module.rgb_embed.weight),
         ('Thermal embedding', module.thermal_embed.weight),
-        ('candidate head', module.candidate_head[-1].weight),
+        ('Thermal candidate head',
+         module.thermal_candidate_head[-1].weight),
+        ('RGB candidate head', module.rgb_candidate_head[-1].weight),
+        ('Thermal foreground head',
+         module.thermal_foreground_head[-1].weight),
+        ('RGB foreground head', module.rgb_foreground_head[-1].weight),
         ('RGB evidence head', module.rgb_evidence_head.weight),
         ('Thermal evidence head', module.thermal_evidence_head.weight),
         ('router', module.router[-1].weight),
@@ -135,9 +144,11 @@ def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
             candidate_threshold=0.0,
             max_candidates=4,
             targetness_loss_weight=0.1,
+            foreground_loss_weight=0.1,
             contrastive_loss_weight=0.05,
             edl_loss_weight=0.01,
-            utility_loss_weight=0.05),
+            utility_loss_weight=0.0,
+            use_detector_utility=False),
         usepoolup=[])
     layer.train()
 
@@ -164,18 +175,19 @@ def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
 
     output = layer(
         visible, thermal, gt_bboxes=boxes, img_metas=metas)
-    assert isinstance(output, tuple) and len(output) == 3
-    features, aux, utility_payload = output
+    assert isinstance(output, tuple) and len(output) == 2
+    features, aux = output
     assert [tuple(feature.shape) for feature in features] == [
         (2, 16, 10, 14), (2, 16, 5, 7)]
     for after, before in zip(thermal, thermal_before):
         assert torch.equal(after, before)
     for key in (
-            'loss_oepc_targetness', 'loss_oepc_contrastive',
+            'loss_oepc_targetness', 'loss_oepc_foreground',
+            'loss_oepc_contrastive',
             'loss_oepc_edl',
             'oepc_delta_ratio', 'oepc_support_ratio'):
         assert key in aux
-    assert utility_payload['level'] == 0
+    assert aux['oepc_utility_sampled'].item() == 0
 
 
 def test_oepc_candidate_selection_precedes_rgb_matching():
@@ -189,6 +201,37 @@ def test_oepc_candidate_selection_precedes_rgb_matching():
     # A diffuse 5x5 correspondence would dilute 0.7 to 0.028, but candidate
     # existence has already been decided in Thermal coordinates.
     assert peak[0, 0, 3, 3] == 1
+
+
+def test_oepc_rgb_candidate_survives_missing_thermal_candidate():
+    module = ObjectCentricEvidentialCalibration(
+        channels=8, embed_dim=4, object_kernel=3, context_kernel=5,
+        search_radius=1, candidate_threshold=0.5, max_candidates=2)
+    with torch.no_grad():
+        for head, bias in (
+                (module.thermal_candidate_head, -20.0),
+                (module.rgb_candidate_head, 20.0)):
+            head[-1].weight.zero_()
+            head[-1].bias.fill_(bias)
+    rgb = torch.randn(1, 8, 7, 7)
+    thermal = torch.randn_like(rgb)
+    _, aux = module(rgb, thermal, return_aux=True)
+    assert aux['candidate_count_thermal'].item() == 0
+    assert aux['candidate_count_rgb'].item() > 0
+    assert aux['candidate_support'].sum().item() > 0
+
+
+def test_oepc_missing_context_does_not_fall_back_to_object_prototype():
+    module = ObjectCentricEvidentialCalibration(
+        channels=8, embed_dim=4, object_kernel=3, context_kernel=5)
+    feature = torch.randn(1, 8, 7, 7)
+    foreground = torch.ones(1, 1, 7, 7)
+    uncertainty = torch.zeros_like(foreground)
+    valid = torch.ones_like(foreground, dtype=torch.bool)
+    _, _, difference, _, _, available = module._object_context(
+        feature, foreground, uncertainty, valid)
+    assert not available.any()
+    assert torch.count_nonzero(difference) == 0
 
 
 def test_oepc_initialization_follows_user_seed():

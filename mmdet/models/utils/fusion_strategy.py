@@ -132,6 +132,8 @@ class FusionLayer(nn.Module):
             raise ValueError('OEPC apply_levels contains an invalid level')
         self.oepc_target_loss_weight = float(
             _oepc_cfg.pop('targetness_loss_weight', 0.1))
+        self.oepc_foreground_loss_weight = float(
+            _oepc_cfg.pop('foreground_loss_weight', 0.1))
         self.oepc_contrast_loss_weight = float(
             _oepc_cfg.pop('contrastive_loss_weight', 0.05))
         self.oepc_edl_loss_weight = float(
@@ -346,10 +348,12 @@ class FusionLayer(nn.Module):
                 monitor_keys = (
                     'local_attention_entropy', 'candidate_mean',
                     'matching_confidence_mean', 'candidate_count',
-                    'support_ratio',
+                    'candidate_count_thermal', 'candidate_count_rgb',
+                    'candidate_support_ratio', 'support_ratio',
                     'transfer_mean', 'uncertainty_rgb_mean',
                     'uncertainty_thermal_mean', 'foreground_rgb_mean',
-                    'foreground_thermal_mean', 'film_raw_rms',
+                    'foreground_thermal_mean', 'context_rgb_ratio',
+                    'context_thermal_ratio', 'film_raw_rms',
                     'delta_ratio', 'residual_cap_ratio', 'residual_scale',
                     'utility_sampled')
                 for key in monitor_keys:
@@ -366,6 +370,8 @@ class FusionLayer(nn.Module):
                 loss_specs = (
                     ('candidate_loss', 'loss_oepc_targetness',
                      self.oepc_target_loss_weight),
+                    ('foreground_loss', 'loss_oepc_foreground',
+                     self.oepc_foreground_loss_weight),
                     ('contrastive_loss', 'loss_oepc_contrastive',
                      self.oepc_contrast_loss_weight),
                     ('edl_loss', 'loss_oepc_edl',
