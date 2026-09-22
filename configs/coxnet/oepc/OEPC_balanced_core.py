@@ -17,6 +17,10 @@ model = dict(
     use_clfm=[],
     use_trpc=False,
     use_oepc=True,
+    # The inherited kl_v2 objective explicitly treats Thermal as the target
+    # fused representation. Disable it here because the balanced design must
+    # also preserve RGB when Thermal is locally unreliable.
+    wf_loss=False,
     oepc_cfg=dict(
         apply_levels=(0,),
         embed_dim=64,

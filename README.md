@@ -59,7 +59,9 @@ Other annotated people are never contrastive negatives. EDL is optional and,
 when enabled, supplies uncertainty to the router through a separate head. The
 balanced-core experiment disables detector counterfactual utility so the core
 path is trained end-to-end by the ordinary detection loss and small auxiliary
-losses.
+losses. It also disables the inherited `kl_v2` fused-to-Thermal feature loss,
+which would reintroduce the assumption that Thermal is always the preferred
+reference.
 
 ---
 
