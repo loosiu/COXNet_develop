@@ -36,6 +36,8 @@ class FusionNetXO(SingleStageDetector):
                  clfm_mode='up_new',
                  use_trpc=False,
                  trpc_cfg=None,
+                 use_oepc=False,
+                 oepc_cfg=None,
                 #  usepoolup=['v'],
                  usepoolup=[],
                  train_cfg=None,
@@ -47,6 +49,7 @@ class FusionNetXO(SingleStageDetector):
         self.wf_loss = wf_loss
         self.wf_loss_mode = wf_loss_mode
         self.use_trpc = use_trpc
+        self.use_oepc = use_oepc
         if neck_t is not None:
             self.neck_t = build_neck(neck_t)
         else:
@@ -70,6 +73,8 @@ class FusionNetXO(SingleStageDetector):
             clfm_mode=clfm_mode,
             use_trpc=use_trpc,
             trpc_cfg=trpc_cfg,
+            use_oepc=use_oepc,
+            oepc_cfg=oepc_cfg,
             usepoolup=usepoolup)
         
         # self.iter = -1
@@ -106,7 +111,7 @@ class FusionNetXO(SingleStageDetector):
         batch_input_shape = tuple(img[0].size()[-2:])
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
-        if self.wf_loss or self.use_trpc:
+        if self.wf_loss or self.use_trpc or self.use_oepc:
             out = self.extract_feat(
                 img, gt_bboxes, img_metas,
                 gt_bboxes_ignore=gt_bboxes_ignore)
@@ -120,7 +125,7 @@ class FusionNetXO(SingleStageDetector):
         return losses
 
     def simple_test(self, img, img_metas, rescale=False):
-        """Run inference while preserving geometry metadata for TRPC masks."""
+        """Run inference while preserving geometry metadata for fusion masks."""
         feat = self.extract_feat(img, img_metas=img_metas)
         results_list = self.bbox_head.simple_test(
             feat, img_metas, rescale=rescale)

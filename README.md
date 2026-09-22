@@ -1,4 +1,4 @@
-# COXNet + TRPC: Thermal-Referenced Prototype Calibration
+# COXNet CLFM Replacements: OEPC and TRPC
 
 **IEEE Transactions on Circuits and Systems for Video Technology**, Vol. 36, No. 1, January 2026
 
@@ -12,23 +12,52 @@
 
 COXNet is an RGBT tiny object detection framework that jointly addresses cross-modal fusion, misalignment, and scale variation in drone-based multi-spectral imagery. The core innovations are: **(1) CLFM** (Cross-Layer Fusion Module), which leverages wavelet decomposition to align and fuse complementary RGB and thermal features across pyramid levels; **(2) DASR** (Dynamic Adaptive Scale Refinement), which recalibrates spatial correspondences and integrates multi-scale contextual cues for robust tiny object localization; and **(3) a GeoShape-based label assignment strategy** that better fits the irregular geometry of tiny aerial targets, improving recall under severe scale imbalance.
 
-This repository also provides **TRPC**, which replaces the complete CLFM with
-same-stage Thermal-conditioned prototype calibration. It summarizes the
-Thermal scene with learned prototypes, lets every RGB location softly read the
-prototypes, and uses spatial FiLM scale/shift to modulate the local RGB feature
-before the original AAM/HOFM. It does not assume object-level prototype
-correspondence.
+This repository studies complete replacements for COXNet's CLFM while keeping
+the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
+The current method is **OEPC (Object-centric Evidential Prototype
+Calibration)**. RGB and Thermal FPNs both start at level 1 and therefore
+produce equal-stride P3/P4/P5/P6 features. OEPC uses local object-versus-context
+evidence and evidential keep/transfer routing to calibrate RGB only. The
+unchanged Thermal feature and calibrated RGB feature then enter the original
+AAM/HOFM.
 
-TRPC preserves the original AAM, DSR/MSF, detector head, and training recipe.
-Its primary config pairs equal-stride RGB/Thermal features and contains no
-CLFM DeConv or frequency operation. The initial cross-stage/DeConv experiment
-is retained only for reproducibility. See [docs/TRPC.md](docs/TRPC.md) for the
-architecture and [the diagnosis](docs/trpc_same_stage_analysis_ko.md) for why
-the same-stage control is required.
+The OEPC path contains no cross-stage pairing, transposed convolution, DWT,
+IDWT, or CLFM frequency fusion. The first controlled config applies OEPC at P3,
+where tiny objects retain useful spatial support; P4-P6 remain same-stage and
+enter AAM/HOFM directly. Earlier global-prototype **TRPC** variants are retained
+as documented baselines and for reproducibility. See [docs/TRPC.md](docs/TRPC.md)
+and [the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
+
+### OEPC data flow
+
+```text
+RGB Pi ── local object/context evidence ── EDL keep/transfer ── RGB_cal Pi ──┐
+                                                                              ├─ AAM/HOFM
+Thermal Pi ───────────────────────────────────────────────────────────────────┘
+```
+
+The calibration path uses predicted dense local evidence during both training
+and inference. Thermal-coordinate GT boxes supervise only auxiliary
+targetness, object-context contrastive, and evidential losses; they are not
+used to select oracle calibration regions. A local cross-modal search allows
+RGB evidence to be associated with nearby Thermal evidence without globally
+warping either modality.
 
 ---
 
 ## Main Results
+
+### OEPC status
+
+OEPC has passed configuration construction, same-stage shape checks, full
+COXNet train forward/backward, padding identity, Thermal-input preservation,
+and non-zero gradient checks for its candidate, projector, contrastive, EDL,
+router, and RGB residual paths. Detection accuracy has not yet been reported;
+do not interpret structural validation as an AP improvement.
+
+The active P3 OEPC module has 88,583 parameters. In the current configs, the
+complete model has 61.06M parameters versus 71.34M for the original model with
+four CLFM blocks. Runtime and FPS must still be measured on the target GPU.
 
 ### Initial cross-stage TRPC three-seed result
 
@@ -101,8 +130,8 @@ The best-checkpoint mean mAP50 is **45.77 ± 0.43**, compared with
 **Step 1 — Clone the repository**
 
 ```bash
-git clone git@github.com:loosiu/COXNet_develop.git
-cd COXNet_develop
+git clone git@github.com:loosiu/TRPC-Thermal-Referenced-Prototype-Calibration.git
+cd TRPC-Thermal-Referenced-Prototype-Calibration
 ```
 
 **Step 2 — Install PyTorch**
@@ -162,6 +191,16 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
+**OEPC complete CLFM replacement, single GPU (seed 0)**
+
+```bash
+python tools/train.py configs/coxnet/oepc/OEPC_same_stage.py \
+    --seed 0 --deterministic
+```
+
+This config uses RGB/Thermal FPN `start_level=1`, applies OEPC at P3, removes
+all CLFM/DeConv/DWT operations, and keeps the original AAM/HOFM and detector.
+
 **Same-stage TRPC, single GPU (seed 0)**
 
 ```bash
@@ -194,6 +233,8 @@ configs/coxnet/
 ├── coxnet_star_r50_fpn_1x_rgbtdroneperson.py
 ├── coxnet_r50_fpn_1x_vtuav.py
 ├── coxnet_star_r50_fpn_1x_vtuav.py
+├── oepc/
+│   └── OEPC_same_stage.py
 └── trpc/
     ├── TRPC.py
     ├── TRPC_same_stage.py
@@ -206,10 +247,14 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/trpc/TRPC_same_stage.py \
+    configs/coxnet/oepc/OEPC_same_stage.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```
+
+For a strict same-stage control without any RGB calibration, use
+`configs/coxnet/trpc/same_stage_no_trpc.py`. It has the same RGB/Thermal FPN
+levels and directly feeds both features into AAM/HOFM.
 
 ---
 
