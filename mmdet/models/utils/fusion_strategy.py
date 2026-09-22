@@ -75,18 +75,35 @@ class FusionLayer(nn.Module):
         self.trpc_diversity_loss_weight = float(
             _trpc_cfg.pop('diversity_loss_weight', 0.01))
         self.trpc_focal_gamma = float(_trpc_cfg.pop('focal_gamma', 2.0))
+        self.trpc_same_stage = bool(_trpc_cfg.get('same_stage', False))
         self.last_trpc_aux = None
         if self.use_trpc:
-            legacy_layers = [
-                DWTC(in_channel=in_channels, out_channel=in_channels, mode='up_new')
-                for _ in range(num_layers)]
             self.trpc_layers = nn.ModuleList()
-            with torch.random.fork_rng(devices=[]):
-                for i in range(num_layers):
-                    torch.manual_seed(94001 + i)
-                    self.trpc_layers.append(TRPC.from_legacy_clfm(
-                        legacy_layers[i], channels=in_channels, **_trpc_cfg))
-            del legacy_layers
+            if self.trpc_same_stage:
+                # Do not instantiate DWTC or consume its RNG stream. Keeping
+                # TRPC initialization inside fork_rng also leaves downstream
+                # HOFM initialization identical to a same-stage HOFM-only
+                # control built with the same seed.
+                with torch.random.fork_rng(devices=[]):
+                    for i in range(num_layers):
+                        torch.manual_seed(94001 + i)
+                        self.trpc_layers.append(
+                            TRPC(channels=in_channels, **_trpc_cfg))
+            else:
+                # Reproduction path for the original cross-stage TRPC study.
+                legacy_layers = [
+                    DWTC(
+                        in_channel=in_channels,
+                        out_channel=in_channels,
+                        mode='up_new')
+                    for _ in range(num_layers)]
+                with torch.random.fork_rng(devices=[]):
+                    for i in range(num_layers):
+                        torch.manual_seed(94001 + i)
+                        self.trpc_layers.append(TRPC.from_legacy_clfm(
+                            legacy_layers[i], channels=in_channels,
+                            **_trpc_cfg))
+                del legacy_layers
 
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)

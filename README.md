@@ -12,25 +12,27 @@
 
 COXNet is an RGBT tiny object detection framework that jointly addresses cross-modal fusion, misalignment, and scale variation in drone-based multi-spectral imagery. The core innovations are: **(1) CLFM** (Cross-Layer Fusion Module), which leverages wavelet decomposition to align and fuse complementary RGB and thermal features across pyramid levels; **(2) DASR** (Dynamic Adaptive Scale Refinement), which recalibrates spatial correspondences and integrates multi-scale contextual cues for robust tiny object localization; and **(3) a GeoShape-based label assignment strategy** that better fits the irregular geometry of tiny aerial targets, improving recall under severe scale imbalance.
 
-This repository also provides **TRPC**, which replaces CLFM's
-DWT/LL/HF/IDWT frequency-fusion operations with thermal-referenced prototype
-calibration. TRPC matches task-learned RGB prototypes with
+This repository also provides **TRPC**, which replaces the complete CLFM with
+same-stage thermal-referenced prototype calibration. TRPC matches task-learned RGB prototypes with
 objectness-supervised thermal prototypes, calibrates only the RGB prototypes
 using detached thermal references, reconstructs the residual at RGB-assigned locations, and
 then passes the calibrated RGB feature to the original AAM/HOFM.
 
 TRPC preserves the original AAM, DSR/MSF, detector head, and training recipe.
-CLFM's DeConv is retained as a cross-level resolution matcher; its
-DWT/LL/HF/IDWT operations are not used. See [docs/TRPC.md](docs/TRPC.md) for
-the architecture, losses, diagnostics, and implementation contract.
+Its primary config pairs equal-stride RGB/Thermal features and contains no
+CLFM DeConv or frequency operation. The initial cross-stage/DeConv experiment
+is retained only for reproducibility. See [docs/TRPC.md](docs/TRPC.md) for the
+architecture and [the diagnosis](docs/trpc_same_stage_analysis_ko.md) for why
+the same-stage control is required.
 
 ---
 
 ## Main Results
 
-### TRPC three-seed controlled result
+### Initial cross-stage TRPC three-seed result
 
-The completed seeds 0/1/2 are summarized in the COXNet Table 1 column order.
+The completed legacy cross-stage seeds 0/1/2 are summarized in the COXNet
+Table 1 column order. These results do not apply to the new same-stage config.
 The best-checkpoint mean mAP50 is **45.77 ± 0.43**, compared with
 **45.70 ± 0.49** for the paired COXNet reruns. See
 [the full per-seed table and interpretation](docs/trpc_table1_ko.md).
@@ -159,16 +161,22 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
-**TRPC, single GPU (seed 0)**
+**Same-stage TRPC, single GPU (seed 0)**
 
 ```bash
-python tools/train.py configs/coxnet/trpc/TRPC.py --seed 0 --deterministic
+python tools/train.py configs/coxnet/trpc/TRPC_same_stage.py --seed 0 --deterministic
+```
+
+**Same-stage control without TRPC**
+
+```bash
+python tools/train.py configs/coxnet/trpc/same_stage_no_trpc.py --seed 0 --deterministic
 ```
 
 **TRPC, multi-GPU (e.g., 4 GPUs)**
 
 ```bash
-bash tools/dist_train.sh configs/coxnet/trpc/TRPC.py 4 --deterministic
+bash tools/dist_train.sh configs/coxnet/trpc/TRPC_same_stage.py 4 --deterministic
 ```
 
 **Original COXNet baseline**
@@ -186,7 +194,9 @@ configs/coxnet/
 ├── coxnet_r50_fpn_1x_vtuav.py
 ├── coxnet_star_r50_fpn_1x_vtuav.py
 └── trpc/
-    └── TRPC.py
+    ├── TRPC.py
+    ├── TRPC_same_stage.py
+    └── same_stage_no_trpc.py
 ```
 
 ---
@@ -195,7 +205,7 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/trpc/TRPC.py \
+    configs/coxnet/trpc/TRPC_same_stage.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```

@@ -1,10 +1,14 @@
 # Thermal-Referenced Prototype Calibration (TRPC)
 
-TRPC replaces the DWT/LL/HF/IDWT frequency-fusion operations in COXNet's
-Cross-Layer Fusion Module (CLFM). The original cross-level structure and
-DeConv resolution matcher remain. TRPC is intended to reduce semantic/domain
-discrepancy before the original Adaptive Alignment Module (AAM), while leaving
-spatial alignment to AAM.
+The primary TRPC experiment now replaces COXNet's complete Cross-Layer Fusion
+Module (CLFM). RGB and Thermal features with equal strides are paired directly;
+there is no DWT/IDWT, frequency fusion, legacy DeConv, or interpolation fallback.
+TRPC is intended to reduce semantic/domain discrepancy before the original
+Adaptive Alignment Module (AAM), while leaving spatial alignment to AAM.
+
+The first cross-stage TRPC implementation is retained in `TRPC.py` only for
+checkpoint and result reproduction. Its learned residual was found to be
+effectively inactive; see the [same-stage design and diagnosis](trpc_same_stage_analysis_ko.md).
 
 ## Architecture
 
@@ -42,7 +46,8 @@ directly into RGB before alignment.
 - RGB objectness is task-learned; thermal GT is not imposed at potentially
   displaced RGB coordinates.
 - The final residual projection is zero-initialized, so iteration-zero TRPC is
-  exactly the retained DeConv path (`F_R_cal = F_R`).
+  exactly the incoming same-stage RGB feature. In the legacy cross-stage config,
+  it is the retained DeConv output.
 - Prototype diversity is a weak embedding de-correlation loss, not a hard
   spatial orthogonality constraint.
 
@@ -82,6 +87,8 @@ feature cells do not participate in prototype extraction or reconstruction.
 
 ```text
 configs/coxnet/trpc/TRPC.py
+configs/coxnet/trpc/TRPC_same_stage.py
+configs/coxnet/trpc/same_stage_no_trpc.py
 mmdet/models/utils/trpc.py
 mmdet/models/utils/fusion_strategy.py
 mmdet/models/detectors/fusionnet_xo.py
@@ -97,26 +104,26 @@ in `configs/_base_/datasets/rgbtdroneperson_detection.py`.
 ## Training
 
 ```bash
-python tools/train.py configs/coxnet/trpc/TRPC.py --seed 0 --deterministic
+python tools/train.py configs/coxnet/trpc/TRPC_same_stage.py --seed 0 --deterministic
 ```
 
 The default output directory is:
 
 ```text
-work_dir/coxmamba/rgbtdroneperson/trpc/TRPC
+work_dir/coxmamba/rgbtdroneperson/trpc/TRPC_same_stage
 ```
 
 For distributed training:
 
 ```bash
-bash tools/dist_train.sh configs/coxnet/trpc/TRPC.py 4 --deterministic
+bash tools/dist_train.sh configs/coxnet/trpc/TRPC_same_stage.py 4 --deterministic
 ```
 
 ## Evaluation
 
 ```bash
 python tools/test.py \
-  configs/coxnet/trpc/TRPC.py \
+  configs/coxnet/trpc/TRPC_same_stage.py \
   /path/to/checkpoint.pth \
   --eval bbox
 ```

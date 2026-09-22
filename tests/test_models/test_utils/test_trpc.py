@@ -199,6 +199,93 @@ def test_trpc_odd_resolution_fallback():
     assert output.shape == (1, 16, 9, 11)
 
 
+def test_same_stage_trpc_has_no_deconv_and_rejects_shape_mismatch():
+    module = TRPC(
+        channels=16, embed_dim=8, num_prototypes=2, same_stage=True)
+    assert isinstance(module.visible_upsample, torch.nn.Identity)
+    assert not any(
+        name.startswith('visible_upsample.')
+        for name, _ in module.named_parameters())
+
+    rgb = torch.randn(1, 16, 9, 11)
+    thermal = torch.randn(1, 16, 9, 11)
+    output = module(rgb, thermal)
+    assert output.shape == rgb.shape
+    assert torch.allclose(output, rgb, atol=1e-6, rtol=1e-6)
+
+    try:
+        module(torch.randn(1, 16, 5, 6), thermal)
+    except ValueError as error:
+        assert 'requires equal RGB/Thermal feature shapes' in str(error)
+    else:
+        raise AssertionError('same-stage TRPC silently accepted mismatched shapes')
+
+
+def test_same_stage_trpc_in_fusion_slot_has_no_clfm_modules():
+    layer = FusionLayer(
+        in_channels=32,
+        reduction=8,
+        num_layers=2,
+        fs_type='fusionnet-xo',
+        use_clfm=[],
+        use_trpc=True,
+        trpc_cfg=dict(
+            same_stage=True,
+            num_prototypes=4,
+            embed_dim=16,
+            targetness_loss_weight=0.1,
+            diversity_loss_weight=0.01),
+        usepoolup=[])
+    assert layer.trpc_same_stage
+    assert not hasattr(layer, 'idwt_layers')
+    assert all(
+        isinstance(module.visible_upsample, torch.nn.Identity)
+        for module in layer.trpc_layers)
+
+    visible = [torch.randn(2, 32, 10, 14), torch.randn(2, 32, 6, 8)]
+    thermal = [torch.randn(2, 32, 10, 14), torch.randn(2, 32, 6, 8)]
+    features, aux = layer(
+        visible, thermal,
+        gt_bboxes=[torch.empty(0, 4), torch.empty(0, 4)],
+        img_metas=[
+            dict(
+                img_shape=(80, 112, 3), pad_shape=(80, 112, 3),
+                batch_input_shape=(80, 112))
+            for _ in range(2)])
+    assert [tuple(feature.shape) for feature in features] == [
+        (2, 32, 10, 14), (2, 32, 6, 8)]
+    assert 'loss_trpc_targetness' in aux
+
+
+def test_same_stage_trpc_preserves_control_hofm_initialization():
+    """Adding TRPC must not change the same-seed AAM/HOFM initialization."""
+    common = dict(
+        in_channels=32,
+        reduction=8,
+        num_layers=2,
+        fs_type='fusionnet-xo',
+        use_clfm=[],
+        usepoolup=[])
+    torch.manual_seed(23)
+    control = FusionLayer(use_trpc=False, **common)
+    torch.manual_seed(23)
+    treatment = FusionLayer(
+        use_trpc=True,
+        trpc_cfg=dict(
+            same_stage=True,
+            num_prototypes=4,
+            embed_dim=16,
+            targetness_loss_weight=0.1,
+            diversity_loss_weight=0.01),
+        **common)
+
+    control_state = control.hofm_layers.state_dict()
+    treatment_state = treatment.hofm_layers.state_dict()
+    assert control_state.keys() == treatment_state.keys()
+    for name in control_state:
+        assert torch.equal(control_state[name], treatment_state[name]), name
+
+
 def test_trpc_in_coxnet_fusion_slot():
     torch.manual_seed(11)
     layer = FusionLayer(

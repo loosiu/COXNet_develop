@@ -1,9 +1,9 @@
 """Thermal-Referenced Prototype Calibration (TRPC).
 
-TRPC replaces COXNet's CLFM frequency-fusion operations while retaining its
-cross-level DeConv resolution matcher. It is intended to reduce the
-semantic/domain gap before the original AAM while deliberately leaving spatial
-alignment to AAM:
+TRPC replaces COXNet's CLFM before the original AAM while deliberately leaving
+spatial alignment to AAM.  The primary same-stage variant pairs equal-stride
+RGB/Thermal features directly and contains no CLFM or DeConv.  The legacy
+cross-stage variant is kept only to reproduce the first experiment:
 
     RGB, Thermal -> learned prototypes -> mutual semantic matching
                  -> Thermal-guided RGB prototype residual
@@ -174,7 +174,8 @@ class TRPC(nn.Module):
     def __init__(self, channels=256, embed_dim=64, num_prototypes=8,
                  match_temperature=0.2, match_topk=1, mutual_matching=True,
                  objectness_prior=0.1, objectness_bias=1.0,
-                 residual_scale=0.2, learn_residual_scale=True):
+                 residual_scale=0.2, learn_residual_scale=True,
+                 same_stage=False):
         super().__init__()
         if num_prototypes < 1:
             raise ValueError('num_prototypes must be >= 1')
@@ -191,11 +192,14 @@ class TRPC(nn.Module):
         self.match_temperature = float(match_temperature)
         self.match_topk = int(match_topk)
         self.mutual_matching = bool(mutual_matching)
+        self.same_stage = bool(same_stage)
 
-        # COXNet pairs F_v^{i+1} with F_t^i.  This block only reconciles the
-        # resolutions; from_legacy_clfm() replaces it with the baseline CLFM's
-        # exact DeConv for controlled comparisons.
-        self.visible_upsample = TransBasicConv2d(channels, channels)
+        # Same-stage TRPC removes the complete CLFM path, including DeConv.
+        # The legacy cross-stage variant remains available to reproduce the
+        # first experiment and its checkpoints.
+        self.visible_upsample = (
+            nn.Identity() if self.same_stage
+            else TransBasicConv2d(channels, channels))
         self.rgb_extractor = ObjectAwarePrototypeExtractor(
             channels, embed_dim, num_prototypes, objectness_prior, objectness_bias)
         self.thermal_extractor = ObjectAwarePrototypeExtractor(
@@ -210,7 +214,8 @@ class TRPC(nn.Module):
             nn.Linear(embed_dim, hidden), nn.GELU(),
             nn.Linear(hidden, embed_dim))
         self.delta_to_rgb = nn.Linear(embed_dim, channels, bias=False)
-        # Start from the exact DeConv baseline.  Only this actuator is zeroed:
+        # Start from the exact incoming RGB feature (or legacy DeConv output).
+        # Only this actuator is zeroed:
         # its first update receives a detector gradient, then gradients can
         # propagate into the matching/gating path without perturbing AAM at
         # iteration zero.
@@ -229,6 +234,8 @@ class TRPC(nn.Module):
     def from_legacy_clfm(cls, legacy_clfm, **kwargs):
         """Build TRPC while retaining only CLFM's resolution-matching DeConv."""
         module = cls(**kwargs)
+        if module.same_stage:
+            raise ValueError('same-stage TRPC cannot retain a legacy DeConv')
         if not hasattr(legacy_clfm, 'deconv'):
             raise ValueError("TRPC expects a legacy DWTC(mode='up_new') with a deconv block")
         module.visible_upsample = copy.deepcopy(legacy_clfm.deconv)
@@ -296,10 +303,16 @@ class TRPC(nn.Module):
     def forward(self, rgb, thermal, valid_mask=None, return_aux=False):
         rgb_up = self.visible_upsample(rgb)
         if rgb_up.shape[-2:] != thermal.shape[-2:]:
-            # Only handles odd FPN dimensions; it is not a spatial alignment
-            # operation.  AAM still owns cross-modal displacement correction.
-            rgb_up = F.interpolate(rgb_up, size=thermal.shape[-2:], mode='bilinear',
-                                   align_corners=False)
+            if self.same_stage:
+                raise ValueError(
+                    'same-stage TRPC requires equal RGB/Thermal feature '
+                    f'shapes, got {tuple(rgb_up.shape)} and '
+                    f'{tuple(thermal.shape)}')
+            # Legacy cross-stage fallback for odd FPN dimensions only. AAM
+            # still owns cross-modal displacement correction.
+            rgb_up = F.interpolate(
+                rgb_up, size=thermal.shape[-2:], mode='bilinear',
+                align_corners=False)
         if rgb_up.shape[1] != self.channels or thermal.shape[1] != self.channels:
             raise ValueError('TRPC channel mismatch')
 
