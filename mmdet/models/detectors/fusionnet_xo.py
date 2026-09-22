@@ -5,6 +5,7 @@ from .single_stage import SingleStageDetector
 from ..utils import FusionLayer
 import matplotlib.pyplot as plt
 import torch
+import torch.nn.functional as F
 import os
 import mmcv
 import numpy as np
@@ -115,12 +116,73 @@ class FusionNetXO(SingleStageDetector):
             out = self.extract_feat(
                 img, gt_bboxes, img_metas,
                 gt_bboxes_ignore=gt_bboxes_ignore)
-            x, aux_losses = out if isinstance(out, tuple) else (out, {})
+            utility_payload = None
+            if isinstance(out, tuple) and len(out) == 3:
+                x, aux_losses, utility_payload = out
+            else:
+                x, aux_losses = out if isinstance(out, tuple) else (out, {})
         else:
             x = self.extract_feat(img)
             aux_losses = {}
-        losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
-                                              gt_labels, gt_bboxes_ignore)
+            utility_payload = None
+
+        if utility_payload is None:
+            losses = self.bbox_head.forward_train(
+                x, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore)
+        else:
+            required = ('build_loss_target_cache', 'loss_by_target_cache',
+                        'sampled_detector_loss')
+            if not all(hasattr(self.bbox_head, name) for name in required):
+                raise TypeError(
+                    'OEPC detector utility requires a head with fixed-target '
+                    'counterfactual loss support')
+            head_outputs = self.bbox_head(x)
+            target_cache = self.bbox_head.build_loss_target_cache(
+                head_outputs[0], head_outputs[1], gt_bboxes, gt_labels,
+                img_metas, gt_bboxes_ignore=gt_bboxes_ignore)
+            if target_cache is None:
+                losses = self.bbox_head.loss(
+                    *head_outputs, gt_bboxes, gt_labels, img_metas,
+                    gt_bboxes_ignore=gt_bboxes_ignore)
+            else:
+                losses = self.bbox_head.loss_by_target_cache(
+                    *head_outputs, target_cache)
+                level = utility_payload['level']
+                batch_index = utility_payload['batch_index']
+                with torch.no_grad():
+                    keep_outputs = self.bbox_head.forward_single(
+                        utility_payload['keep_fused'].detach(),
+                        self.bbox_head.scales[level])
+                    keep_detection = self.bbox_head.sampled_detector_loss(
+                        *keep_outputs, target_cache, level, batch_index)
+                trial_outputs = self.bbox_head.forward_single(
+                    utility_payload['trial_fused'],
+                    self.bbox_head.scales[level])
+                trial_detection = self.bbox_head.sampled_detector_loss(
+                    *trial_outputs, target_cache, level, batch_index)
+
+                penalty = utility_payload['residual_penalty']
+                raw_utility = (
+                    keep_detection.detach() - trial_detection.detach() -
+                    self.fuse_layer.oepc_utility_penalty_weight *
+                    penalty.detach())
+                utility_target = torch.sigmoid(
+                    raw_utility /
+                    self.fuse_layer.oepc_utility_temperature).detach()
+                route_prediction = utility_payload[
+                    'route_prediction'].float().clamp(1e-6, 1.0 - 1e-6)
+                losses['loss_oepc_utility'] = (
+                    self.fuse_layer.oepc_utility_loss_weight *
+                    F.binary_cross_entropy(route_prediction, utility_target))
+                losses['loss_oepc_trial_det'] = (
+                    self.fuse_layer.oepc_trial_detection_loss_weight *
+                    trial_detection)
+                losses['oepc_utility_keep_det'] = keep_detection.detach()
+                losses['oepc_utility_trial_det'] = trial_detection.detach()
+                losses['oepc_utility_raw'] = raw_utility.detach()
+                losses['oepc_utility_target'] = utility_target.detach()
+                losses['oepc_utility_route'] = route_prediction.detach()
+                losses['oepc_utility_penalty'] = penalty.detach()
         losses.update(aux_losses)
         return losses
 

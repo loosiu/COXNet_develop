@@ -138,20 +138,31 @@ class FusionLayer(nn.Module):
             _oepc_cfg.pop('edl_loss_weight', 0.01))
         self.oepc_utility_loss_weight = float(
             _oepc_cfg.pop('utility_loss_weight', 0.05))
+        self.oepc_trial_detection_loss_weight = float(
+            _oepc_cfg.pop('trial_detection_loss_weight', 0.05))
+        self.oepc_utility_penalty_weight = float(
+            _oepc_cfg.pop('utility_penalty_weight', 0.01))
+        self.oepc_utility_temperature = float(
+            _oepc_cfg.pop('utility_temperature', 0.5))
+        # Removed OEPC v1's uncertainty-only routing target. Accept and ignore
+        # the old option so older configs fail soft while the router uses EDL
+        # foreground probabilities and uncertainty only as inputs.
+        _oepc_cfg.pop('edl_route_weight', None)
         self.oepc_focal_gamma = float(_oepc_cfg.pop('focal_gamma', 2.0))
         self.last_oepc_aux = None
         if self.use_oepc:
             self.oepc_layers = nn.ModuleDict()
-            # Isolate OEPC RNG consumption so the original HOFM/AAM receives
-            # exactly the same initialization as its same-stage control.
-            with torch.random.fork_rng(devices=[]):
-                for level in self.oepc_levels:
-                    torch.manual_seed(95001 + level)
-                    self.oepc_layers[str(level)] = (
-                        ObjectCentricEvidentialCalibration(
-                            channels=in_channels,
-                            focal_gamma=self.oepc_focal_gamma,
-                            **_oepc_cfg))
+            # OEPC parameters follow the experiment seed. Restore only the CPU
+            # stream afterwards so adding OEPC does not change the downstream
+            # HOFM control initialization; no fixed seed or CUDA RNG is touched.
+            cpu_rng_state = torch.get_rng_state()
+            for level in self.oepc_levels:
+                self.oepc_layers[str(level)] = (
+                    ObjectCentricEvidentialCalibration(
+                        channels=in_channels,
+                        focal_gamma=self.oepc_focal_gamma,
+                        **_oepc_cfg))
+            torch.set_rng_state(cpu_rng_state)
 
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
@@ -193,6 +204,7 @@ class FusionLayer(nn.Module):
         fused_feats = []
         trpc_aux = {}
         oepc_aux = {}
+        oepc_utility_payload = None
         for i in range(self.num_layers):
             v_feat = v_feats[i]
             t_feat = t_feats[i]
@@ -228,20 +240,20 @@ class FusionLayer(nn.Module):
                         shapes, padded = self._trpc_geometry(img_metas)
                         valid_mask = None if shapes is None else make_padding_mask(
                             shapes, padded, t_feat.shape[-2:], t_feat.device)
-                        target = None
-                        context_exclusion = None
+                        center_target = None
+                        foreground_target = None
                         if (self.training and gt_bboxes is not None and
                                 shapes is not None):
-                            context_exclusion, valid_mask = build_box_targets(
+                            foreground_target, valid_mask = build_box_targets(
                                 gt_bboxes, shapes, padded, t_feat.shape[-2:],
                                 t_feat.device, ignore_boxes=gt_bboxes_ignore)
-                            target = build_center_targets(
+                            center_target = build_center_targets(
                                 gt_bboxes, padded, t_feat.shape[-2:],
                                 t_feat.device)
                         v_feat, aux_i = self.oepc_layers[str(i)](
                             v_feat, t_feat, valid_mask=valid_mask,
-                            target=target,
-                            context_exclusion=context_exclusion,
+                            center_target=center_target,
+                            foreground_target=foreground_target,
                             return_aux=True)
                         oepc_aux[i] = aux_i
                 elif len(self.use_clfm) != 0:
@@ -255,6 +267,22 @@ class FusionLayer(nn.Module):
                         t_feat = F.interpolate(t_feat, size=v_feat.shape[2:], mode='bilinear', align_corners=True)
                 fused_feat = self.hofm_layers[i](v_feat, t_feat)
                 fused_feats.append(fused_feat)
+                if (self.training and self.use_oepc and i in oepc_aux and
+                        oepc_aux[i].get('utility_payload') is not None):
+                    payload = oepc_aux[i]['utility_payload']
+                    with torch.no_grad():
+                        keep_fused = self.hofm_layers[i](
+                            payload['rgb_keep'].detach(),
+                            payload['thermal'].detach())
+                    trial_fused = self.hofm_layers[i](
+                        payload['rgb_trial'], payload['thermal'])
+                    oepc_utility_payload = dict(
+                        level=i,
+                        batch_index=payload['batch_index'],
+                        keep_fused=keep_fused,
+                        trial_fused=trial_fused,
+                        route_prediction=payload['route_prediction'],
+                        residual_penalty=payload['residual_penalty'])
 
         if not self.training and trpc_aux:
             self.last_trpc_aux = {
@@ -320,10 +348,10 @@ class FusionLayer(nn.Module):
                     'matching_confidence_mean', 'candidate_count',
                     'support_ratio',
                     'transfer_mean', 'uncertainty_rgb_mean',
-                    'uncertainty_thermal_mean', 'film_raw_rms',
-                    'delta_ratio', 'residual_scale',
-                    'utility_keep_ce', 'utility_trial_ce',
-                    'utility_target_mean', 'edl_transfer_target_mean')
+                    'uncertainty_thermal_mean', 'foreground_rgb_mean',
+                    'foreground_thermal_mean', 'film_raw_rms',
+                    'delta_ratio', 'residual_cap_ratio', 'residual_scale',
+                    'utility_sampled')
                 for key in monitor_keys:
                     values = [aux[key] for aux in oepc_aux.values()
                               if key in aux]
@@ -341,9 +369,7 @@ class FusionLayer(nn.Module):
                     ('contrastive_loss', 'loss_oepc_contrastive',
                      self.oepc_contrast_loss_weight),
                     ('edl_loss', 'loss_oepc_edl',
-                     self.oepc_edl_loss_weight),
-                    ('utility_loss', 'loss_oepc_utility',
-                     self.oepc_utility_loss_weight))
+                     self.oepc_edl_loss_weight))
                 for source, destination, weight in loss_specs:
                     values = [aux[source] for aux in oepc_aux.values()
                               if source in aux]
@@ -365,6 +391,8 @@ class FusionLayer(nn.Module):
                     for i in range(self.num_layers):
                         wf_loss += self.compute_kl_loss_near_objects(fused_feats[i], v_feats[i], gt_bboxes, img_metas, weight=self.wf_loss_weight)
                 aux_losses['wf_loss'] = wf_loss
+            if oepc_utility_payload is not None:
+                return fused_feats, aux_losses, oepc_utility_payload
             if aux_losses:
                 return fused_feats, aux_losses
         return fused_feats

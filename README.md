@@ -16,10 +16,10 @@ This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
 The current method is **OEPC (Object-centric Evidential Prototype
 Calibration)**. RGB and Thermal FPNs both start at level 1 and therefore
-produce equal-stride P3/P4/P5/P6 features. OEPC retrieves local
-object-versus-context Thermal evidence around each RGB position, converts the
-retrieved candidate map into sparse RGB-coordinate ROI supports, and uses an
-evidential utility router to calibrate RGB only. The unchanged Thermal feature
+produce equal-stride P3/P4/P5/P6 features. OEPC first selects object candidates
+in Thermal P3, builds predicted foreground-weighted object-minus-context
+descriptors, and then searches a soft local RGB bag for each candidate. An
+evidential utility router calibrates RGB only. The unchanged Thermal feature
 and calibrated RGB feature then enter the original AAM/HOFM.
 
 The OEPC path contains no cross-stage pairing, transposed convolution, DWT,
@@ -32,24 +32,36 @@ and [the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
 ### OEPC data flow
 
 ```text
-RGB Pi ── query ── local Thermal retrieval ── sparse ROI + utility router ── RGB_cal Pi ──┐
-                                                                                           ├─ AAM/HOFM
-Thermal Pi ────────────────────────────────────────────────────────────────────────────────┘
+Thermal P3 ── candidate selection ── weighted object-context descriptor ─┐
+                                                                        ├─ soft local RGB bag
+RGB P3 ─────────────────────────────────────────────────────────────────┘
+       ── EDL-informed utility router ── norm-capped RGB correction ── RGB_cal P3 ─┐
+                                                                                   ├─ AAM/HOFM
+Thermal P3 (unchanged) ─────────────────────────────────────────────────────────────┘
 ```
 
 The calibration path uses predicted local evidence during both training and
 inference. Local attention includes a spatial-distance prior but predicts no
-offset and performs no feature warping. Thermal candidate scores are first
-retrieved into RGB coordinates; local peaks and their ROI supports are then
-selected there. Consequently, RGB is exactly preserved outside candidate
-supports.
+offset and performs no feature warping. Candidate thresholding and top-k are
+performed in Thermal coordinates before RGB matching, so diffuse RGB
+attention cannot delete a confident Thermal candidate. RGB is exactly
+preserved outside predicted candidate supports, and each correction vector is
+explicitly capped relative to the local RGB feature magnitude.
 
-Thermal-coordinate GT boxes supervise only auxiliary center targetness,
-object-context contrast, evidential reliability, and keep-versus-full-trial
-utility. They are not used to select calibration regions. Other annotated
-people are excluded from context rings and are never treated as contrastive
-negatives. The utility objective directly trains the router to prefer Thermal
-transfer only when a full-correction trial improves local object evidence.
+Thermal-coordinate GT box centers supervise candidate detection, while full
+boxes separately supervise Thermal foreground evidence. RGB evidence uses a
+misalignment-tolerant local bag and safe background outside every expanded GT
+region; other annotated people are never contrastive negatives. GT is not used
+to select inference-time calibration regions.
+
+For one sampled Thermal candidate per training batch, OEPC compares candidate
+removal and full-correction trial branches after AAM/HOFM and the detector
+head. Both counterfactuals reuse the normal detector's assignment. Their
+classification and localization loss difference, minus a residual penalty,
+is detached to supervise the router. A small non-detached trial detection loss
+keeps the residual path trainable even when the router initially suppresses a
+candidate. Evidential foreground probability and uncertainty are router
+inputs; there is no independent uncertainty-only route target.
 
 ---
 
@@ -57,14 +69,15 @@ transfer only when a full-correction trial improves local object evidence.
 
 ### OEPC status
 
-OEPC has passed configuration construction, same-stage shape checks, full
-COXNet train forward/backward, padding identity, Thermal-input preservation,
-and non-zero gradient checks for its sparse candidate, projector, contrastive,
-EDL, utility router, and RGB residual paths. Detection accuracy has not yet
-been reported; do not interpret structural validation as an AP improvement.
+OEPC has passed configuration construction, same-stage shape checks, CPU and
+GPU full-COXNet train forward/backward, padding identity, Thermal-input
+preservation, residual-cap checks, fixed-assignment counterfactual loss checks,
+and non-zero gradient checks for its candidate, contrastive, EDL, router, and
+RGB residual paths. Detection accuracy has not yet been reported; do not
+interpret structural validation as an AP improvement.
 
-The active P3 OEPC module has 88,776 parameters. In the current configs, the
-complete model has 61.06M parameters versus 71.34M for the original model with
+The active P3 OEPC module has 92,999 parameters. In the current configs, the
+complete model has 61.07M parameters versus 71.34M for the original model with
 four CLFM blocks. Runtime and FPS must still be measured on the target GPU.
 
 ### Initial cross-stage TRPC three-seed result

@@ -2,11 +2,11 @@
 #
 # Complete CLFM replacement:
 #   RGB P3/P4/P5/P6, Thermal P3/P4/P5/P6 (same strides)
-#     -> local object/context ROI evidence
-#     -> distance-aware local Thermal retrieval in RGB coordinates
-#     -> sparse candidate ROI support
-#     -> evidential + keep-versus-trial utility routing
-#     -> support-bounded RGB-only residual calibration
+#     -> Thermal-coordinate candidate selection
+#     -> foreground-weighted object/context prototype difference
+#     -> distance-aware soft RGB candidate bag
+#     -> EDL-informed, detector-utility-supervised routing
+#     -> support- and norm-bounded RGB-only residual calibration
 #     -> original AAM/HOFM(RGB_calibrated, Thermal_original)
 #
 # No cross-stage pairing, DeConv, DWT/IDWT, frequency fusion, or global scene
@@ -25,6 +25,7 @@ model = dict(
     oepc_cfg=dict(
         apply_levels=(0,),
         embed_dim=64,
+        contrast_dim=32,
         object_kernel=3,
         context_kernel=7,
         search_radius=2,
@@ -36,10 +37,14 @@ model = dict(
         peak_kernel=3,
         support_kernel=3,
         residual_scale=0.2,
+        feature_scale_floor=0.1,
         modulation_init_std=1e-2,
         edl_kl_weight=1e-3,
-        utility_temperature=0.5,
-        edl_route_weight=0.5,
+        # Counterfactual loss differences are typically 1e-4--1e-3 early in
+        # training; this temperature keeps the detached utility target useful.
+        utility_temperature=0.01,
+        utility_penalty_weight=0.01,
+        trial_detection_loss_weight=0.05,
         targetness_loss_weight=0.1,
         contrastive_loss_weight=0.05,
         edl_loss_weight=0.01,

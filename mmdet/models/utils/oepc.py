@@ -1,14 +1,11 @@
-"""Misalignment-tolerant object-centric RGB calibration before COXNet AAM.
+"""Object-centric RGB calibration before COXNet AAM.
 
-OEPC is a complete same-stage replacement for CLFM. Each RGB location retrieves
-semantic evidence only from a local Thermal neighborhood; neither feature map
-is warped. Retrieved Thermal candidate scores are converted to sparse peaks in
-RGB coordinates, and correction is restricted to their local supports. The
-original Thermal tensor is passed unchanged to AAM/HOFM.
-
-GT boxes supervise targetness, prototype contrast, evidential reliability, and
-keep-versus-trial utility only. They never choose calibration regions, so the
-calibration path is identical during training and inference.
+OEPC replaces CLFM at the same RGB/Thermal FPN stage. Thermal candidates are
+selected before cross-modal retrieval, so an uncertain RGB match cannot erase
+a confident Thermal object. Predicted foreground evidence builds local
+object-minus-context descriptors; GT boxes supervise only auxiliary center,
+foreground/bag, and contrastive objectives. The original Thermal feature is
+never modified.
 """
 import math
 
@@ -89,24 +86,23 @@ def evidential_binary_loss(evidence, target, valid, kl_weight=1e-3):
     adjusted_alpha = labels + (1.0 - labels) * alpha
     per_cell = expected_ce + float(kl_weight) * _dirichlet_kl_to_uniform(
         adjusted_alpha)
-    return _balanced_masked_mean(
-        per_cell, target > 0.5, valid.bool())
+    return _balanced_masked_mean(per_cell, target > 0.5, valid.bool())
 
 
 class ObjectCentricEvidentialCalibration(nn.Module):
-    """Calibrate RGB at sparse candidate ROIs using nearby Thermal evidence."""
+    """Calibrate RGB at sparse Thermal candidates using local RGB bags."""
 
-    def __init__(self, channels=256, embed_dim=64, object_kernel=3,
-                 context_kernel=7, search_radius=2, search_temperature=0.2,
-                 distance_prior_weight=0.1, candidate_prior=0.1,
-                 candidate_threshold=0.05, max_candidates=100,
-                 peak_kernel=3, support_kernel=3, residual_scale=0.2,
+    def __init__(self, channels=256, embed_dim=64, contrast_dim=32,
+                 object_kernel=3, context_kernel=7, search_radius=2,
+                 search_temperature=0.2, distance_prior_weight=0.1,
+                 candidate_prior=0.1, candidate_threshold=0.05,
+                 max_candidates=100, peak_kernel=3, support_kernel=3,
+                 residual_scale=0.2, feature_scale_floor=0.1,
                  modulation_init_std=1e-2, edl_kl_weight=1e-3,
-                 utility_temperature=0.5, edl_route_weight=0.5,
                  focal_gamma=2.0):
         super().__init__()
-        if channels < 1 or embed_dim < 1:
-            raise ValueError('channels and embed_dim must be positive')
+        if channels < 1 or embed_dim < 1 or contrast_dim < 1:
+            raise ValueError('channel dimensions must be positive')
         for name, kernel in (
                 ('object_kernel', object_kernel),
                 ('context_kernel', context_kernel),
@@ -118,17 +114,18 @@ class ObjectCentricEvidentialCalibration(nn.Module):
             raise ValueError('context_kernel must exceed object_kernel')
         if search_radius < 0 or max_candidates < 1:
             raise ValueError('search_radius/max_candidates is invalid')
-        if search_temperature <= 0 or utility_temperature <= 0:
-            raise ValueError('temperatures must be positive')
-        if residual_scale <= 0 or modulation_init_std <= 0:
-            raise ValueError('residual parameters must be positive')
-        if distance_prior_weight < 0 or edl_route_weight < 0:
-            raise ValueError('loss/prior weights must be non-negative')
+        if search_temperature <= 0:
+            raise ValueError('search_temperature must be positive')
+        if residual_scale <= 0 or feature_scale_floor <= 0:
+            raise ValueError('residual cap parameters must be positive')
+        if modulation_init_std <= 0 or distance_prior_weight < 0:
+            raise ValueError('initialization/prior parameters are invalid')
         if not 0.0 <= candidate_threshold <= 1.0:
             raise ValueError('candidate_threshold must be in [0, 1]')
 
         self.channels = int(channels)
         self.embed_dim = int(embed_dim)
+        self.contrast_dim = int(contrast_dim)
         self.object_kernel = int(object_kernel)
         self.context_kernel = int(context_kernel)
         self.search_radius = int(search_radius)
@@ -140,19 +137,36 @@ class ObjectCentricEvidentialCalibration(nn.Module):
         self.peak_kernel = int(peak_kernel)
         self.support_kernel = int(support_kernel)
         self.edl_kl_weight = float(edl_kl_weight)
-        self.utility_temperature = float(utility_temperature)
-        self.edl_route_weight = float(edl_route_weight)
         self.focal_gamma = float(focal_gamma)
+        self.feature_scale_floor = float(feature_scale_floor)
         self.register_buffer(
             'residual_scale', torch.tensor(float(residual_scale)))
 
-        axis = torch.arange(-self.search_radius, self.search_radius + 1).float()
+        axis = torch.arange(-self.search_radius,
+                            self.search_radius + 1).float()
         offset_y, offset_x = torch.meshgrid(axis, axis)
         distance = (offset_x.square() + offset_y.square()).sqrt()
         if self.search_radius > 0:
             distance = distance / float(self.search_radius)
         self.register_buffer(
             'distance_penalty', distance.reshape(1, -1, 1))
+
+        object_axis = torch.arange(object_kernel).float()
+        object_axis = object_axis - (object_kernel - 1) / 2.0
+        object_y, object_x = torch.meshgrid(object_axis, object_axis)
+        sigma = max(object_kernel / 3.0, 0.5)
+        center_prior = torch.exp(
+            -(object_x.square() + object_y.square()) / (2.0 * sigma * sigma))
+        self.register_buffer(
+            'center_prior', center_prior.reshape(
+                1, 1, object_kernel, object_kernel))
+        context_ring = torch.ones(context_kernel, context_kernel)
+        inner_start = (context_kernel - object_kernel) // 2
+        context_ring[inner_start:inner_start + object_kernel,
+                     inner_start:inner_start + object_kernel] = 0.0
+        self.register_buffer(
+            'context_ring', context_ring.reshape(
+                1, 1, context_kernel, context_kernel))
 
         self.rgb_embed = nn.Conv2d(channels, embed_dim, 1, bias=False)
         self.thermal_embed = nn.Conv2d(channels, embed_dim, 1, bias=False)
@@ -171,10 +185,15 @@ class ObjectCentricEvidentialCalibration(nn.Module):
 
         self.rgb_evidence_head = nn.Conv2d(embed_dim, 2, 1)
         self.thermal_evidence_head = nn.Conv2d(embed_dim, 2, 1)
+        self.rgb_contrast = nn.Conv2d(embed_dim, contrast_dim, 1, bias=False)
+        self.thermal_contrast = nn.Conv2d(
+            embed_dim, contrast_dim, 1, bias=False)
 
         hidden = max(embed_dim, 32)
+        # RGB/Thermal descriptors plus p_fg(T/R), uncertainty(T/R), matching
+        # entropy, modality disagreement, and matching confidence.
         self.router = nn.Sequential(
-            nn.Conv2d(2 * embed_dim + 4, hidden, 1), nn.GELU(),
+            nn.Conv2d(2 * embed_dim + 7, hidden, 1), nn.GELU(),
             nn.Conv2d(hidden, 2, 1))
         nn.init.zeros_(self.router[-1].weight)
         nn.init.zeros_(self.router[-1].bias)
@@ -186,7 +205,6 @@ class ObjectCentricEvidentialCalibration(nn.Module):
                         float(modulation_init_std))
         nn.init.zeros_(self.film_out.bias)
         self.rgb_norm = ChannelLayerNorm(channels)
-        self.utility_head = nn.Conv2d(embed_dim, 1, 1)
 
     @staticmethod
     def _as_valid_mask(valid_mask, feature):
@@ -203,43 +221,49 @@ class ObjectCentricEvidentialCalibration(nn.Module):
         return valid_mask.bool()
 
     @staticmethod
-    def _window_sum(tensor, kernel):
-        return F.avg_pool2d(
-            tensor, kernel, stride=1, padding=kernel // 2) * (kernel * kernel)
+    def _probability_uncertainty(evidence):
+        alpha = evidence.float() + 1.0
+        strength = alpha.sum(dim=1, keepdim=True).clamp_min(2.0)
+        return alpha[:, 1:2] / strength, 2.0 / strength
 
-    def _object_context(self, feature, valid, context_exclusion=None):
-        """Return local object, background-ring, and difference prototypes."""
+    @staticmethod
+    def _weighted_filter(feature, weight, kernel):
+        channels = feature.shape[1]
+        expanded = kernel.to(feature).expand(channels, 1, -1, -1)
+        numerator = F.conv2d(
+            feature.float() * weight.float(), expanded,
+            padding=kernel.shape[-1] // 2, groups=channels)
+        denominator = F.conv2d(
+            weight.float(), kernel.to(weight),
+            padding=kernel.shape[-1] // 2)
+        return numerator / denominator.clamp_min(1e-6), denominator
+
+    def _object_context(self, feature, foreground_probability, uncertainty,
+                        valid):
+        """Predicted weighted object/context prototypes for the main path."""
         valid_float = valid.to(feature.dtype)
-        object_sum = self._window_sum(
-            feature * valid_float, self.object_kernel)
-        object_count = self._window_sum(valid_float, self.object_kernel)
-        object_proto = object_sum / object_count.clamp_min(1.0)
-
-        context_valid = valid
-        if context_exclusion is not None:
-            context_valid = valid & ~(context_exclusion > 0.5)
-        context_valid_float = context_valid.to(feature.dtype)
-        outer_sum = self._window_sum(
-            feature * context_valid_float, self.context_kernel)
-        inner_sum = self._window_sum(
-            feature * context_valid_float, self.object_kernel)
-        outer_count = self._window_sum(
-            context_valid_float, self.context_kernel)
-        inner_count = self._window_sum(
-            context_valid_float, self.object_kernel)
-        context_count = (outer_count - inner_count).clamp_min(1.0)
-        context_proto = (outer_sum - inner_sum) / context_count
-        return object_proto, context_proto, object_proto - context_proto
+        object_weight = foreground_probability * valid_float
+        object_proto, object_mass = self._weighted_filter(
+            feature, object_weight, self.center_prior)
+        reliable_background = (
+            (1.0 - foreground_probability) * (1.0 - uncertainty) * valid_float)
+        context_proto, context_mass = self._weighted_filter(
+            feature, reliable_background, self.context_ring)
+        context_available = context_mass > 1e-6
+        difference = object_proto - context_proto
+        difference = torch.where(
+            context_available.expand_as(difference), difference, object_proto)
+        return object_proto, context_proto, difference, object_mass, context_mass
 
     def _local_attention(self, query, key, valid):
-        """Retrieve local key evidence without moving either feature map."""
+        """Match each Thermal query to a soft local RGB candidate bag."""
         b, channels, h, w = query.shape
         locations = h * w
-        kernel = self.search_kernel
         candidates = F.unfold(
-            key.float(), kernel_size=kernel, padding=self.search_radius)
+            key.float(), kernel_size=self.search_kernel,
+            padding=self.search_radius)
         candidates = candidates.reshape(
-            b, channels, kernel * kernel, locations)
+            b, channels, self.search_kernel ** 2, locations)
         query_flat = F.normalize(query.float(), dim=1).reshape(
             b, channels, 1, locations)
         similarity = (query_flat * F.normalize(
@@ -249,37 +273,37 @@ class ObjectCentricEvidentialCalibration(nn.Module):
         logits = logits / self.search_temperature
 
         candidate_valid = F.unfold(
-            valid.float(), kernel_size=kernel, padding=self.search_radius)
+            valid.float(), kernel_size=self.search_kernel,
+            padding=self.search_radius)
         candidate_valid = candidate_valid.reshape(
-            b, kernel * kernel, locations) > 0.5
+            b, self.search_kernel ** 2, locations) > 0.5
         logits = logits.masked_fill(~candidate_valid, -1e4)
         attention = logits.softmax(dim=1)
-        query_valid = valid.flatten(2).to(attention.dtype)
-        attention = attention * query_valid
-
+        attention = attention * valid.flatten(2).to(attention.dtype)
         confidence = attention.max(dim=1, keepdim=True).values
         entropy = -(attention * attention.clamp_min(1e-12).log()).sum(
             dim=1, keepdim=True)
         valid_options = candidate_valid.sum(dim=1, keepdim=True)
         entropy_scale = valid_options.clamp_min(2).to(entropy.dtype).log()
         entropy = torch.where(
-            valid_options > 1, entropy / entropy_scale, torch.zeros_like(entropy))
+            valid_options > 1, entropy / entropy_scale,
+            torch.zeros_like(entropy))
         return (attention, confidence.reshape(b, 1, h, w),
                 entropy.reshape(b, 1, h, w))
 
     def _select(self, value, attention):
+        """Softly read RGB values for Thermal-coordinate queries."""
         b, channels, h, w = value.shape
-        locations = h * w
-        kernel = self.search_kernel
         candidates = F.unfold(
-            value.float(), kernel_size=kernel, padding=self.search_radius)
+            value.float(), kernel_size=self.search_kernel,
+            padding=self.search_radius)
         candidates = candidates.reshape(
-            b, channels, kernel * kernel, locations)
+            b, channels, self.search_kernel ** 2, h * w)
         selected = (candidates * attention[:, None]).sum(dim=2)
         return selected.reshape(b, channels, h, w)
 
     def _sparse_support(self, probability, valid):
-        """Select local maxima/top-k in RGB coordinates and make ROI support."""
+        """Select peaks/top-k strictly in Thermal coordinates."""
         local_max = F.max_pool2d(
             probability, self.peak_kernel, stride=1,
             padding=self.peak_kernel // 2)
@@ -293,113 +317,171 @@ class ObjectCentricEvidentialCalibration(nn.Module):
         peak_flat = torch.zeros_like(flat)
         peak_flat.scatter_(1, top_indices, selected.to(flat.dtype))
         peak = peak_flat.reshape(batch, 1, height, width).detach()
-        peak = peak * valid.to(peak.dtype)
-        support = F.max_pool2d(
-            peak, self.support_kernel, stride=1,
-            padding=self.support_kernel // 2)
-        support = (support > 0).to(probability.dtype) * valid.to(
-            probability.dtype)
-        return peak, support
-
-    def _broadcast_candidates(self, value, peak, peak_score):
-        """Broadcast each candidate prototype only inside its ROI support."""
-        weight = peak * peak_score
-        normalizer = self._window_sum(weight, self.support_kernel)
-        value_sum = self._window_sum(
-            value.float() * weight, self.support_kernel)
-        return value_sum / normalizer.clamp_min(1e-6)
+        return peak * valid.to(peak.dtype)
 
     @staticmethod
-    def _uncertainty(evidence):
-        alpha = evidence.float() + 1.0
-        return 2.0 / alpha.sum(dim=1, keepdim=True).clamp_min(2.0)
+    def _shift_slices(length, offset):
+        if offset >= 0:
+            return slice(0, length - offset), slice(offset, length)
+        return slice(-offset, length), slice(0, length + offset)
 
-    def _contrastive_loss(self, t_difference, r_difference,
-                          t_object, r_object, t_context, r_context,
-                          target, valid):
-        """Use the same object as positive and background context as negative."""
-        t_query = self.thermal_embed_norm(self.thermal_embed(t_difference))
-        r_key = self.rgb_embed_norm(self.rgb_embed(r_difference))
-        t_to_r, _, _ = self._local_attention(t_query, r_key, valid)
-        z_t_object = F.normalize(
-            self.thermal_embed(t_object).float(), dim=1)
-        z_t_context = F.normalize(
-            self.thermal_embed(t_context).float(), dim=1)
-        z_r_object = F.normalize(
-            self._select(self.rgb_embed(r_object), t_to_r), dim=1)
-        z_r_context = F.normalize(
-            self._select(self.rgb_embed(r_context), t_to_r), dim=1)
-        positive = (z_t_object * z_r_object).sum(dim=1, keepdim=True)
-        negative_t = (z_t_object * z_r_context).sum(dim=1, keepdim=True)
-        negative_r = (z_r_object * z_t_context).sum(dim=1, keepdim=True)
-        per_cell = 0.5 * (
-            F.softplus((negative_t - positive) / self.search_temperature) +
-            F.softplus((negative_r - positive) / self.search_temperature))
-        foreground = (target > 0.5) & valid
-        if not foreground.any():
-            return per_cell.sum() * 0.0
-        return per_cell[foreground].mean()
+    def _scatter_to_rgb(self, value, attention, peak, valid):
+        """Scatter Thermal candidate values into their soft RGB local bags."""
+        batch, channels, height, width = value.shape
+        numerator = value.new_zeros(batch, channels, height, width).float()
+        mass_out = value.new_zeros(batch, 1, height, width).float()
+        index = 0
+        for offset_y in range(-self.search_radius, self.search_radius + 1):
+            src_y, dst_y = self._shift_slices(height, offset_y)
+            for offset_x in range(-self.search_radius,
+                                  self.search_radius + 1):
+                src_x, dst_x = self._shift_slices(width, offset_x)
+                mass = (peak * attention[:, index:index + 1].reshape(
+                    batch, 1, height, width))[:, :, src_y, src_x]
+                numerator[:, :, dst_y, dst_x] += (
+                    value[:, :, src_y, src_x].float() * mass)
+                mass_out[:, :, dst_y, dst_x] += mass
+                index += 1
+        numerator = numerator * valid.to(numerator.dtype)
+        mass_out = mass_out * valid.to(mass_out.dtype)
+        return numerator, mass_out
 
-    def _evidential_loss(self, t_embed, r_embed, target, valid):
-        t_to_r, _, _ = self._local_attention(t_embed, r_embed, valid)
-        selected_rgb = self._select(r_embed, t_to_r)
-        thermal_evidence = F.softplus(
-            self.thermal_evidence_head(self.thermal_value(t_embed)))
-        rgb_evidence = F.softplus(self.rgb_evidence_head(selected_rgb))
-        loss_t = evidential_binary_loss(
-            thermal_evidence, target, valid, self.edl_kl_weight)
-        loss_r = evidential_binary_loss(
-            rgb_evidence, target, valid, self.edl_kl_weight)
-        return 0.5 * (loss_t + loss_r)
+    @staticmethod
+    def _window_sum(tensor, kernel):
+        return F.avg_pool2d(
+            tensor, kernel, stride=1, padding=kernel // 2) * kernel * kernel
 
-    def _utility_loss(self, rgb, rgb_trial, r_candidate, peak, peak_score,
-                      support, transfer_weight, uncertainty_rgb,
-                      uncertainty_thermal, target, r_to_t, valid):
-        """Supervise keep/transfer using full-correction trial utility."""
-        _, _, trial_difference = self._object_context(rgb_trial, valid)
-        trial_embed = self.rgb_embed_norm(self.rgb_embed(trial_difference))
-        trial_candidate = self._broadcast_candidates(
-            trial_embed, peak, peak_score)
-        keep_logit = self.utility_head(r_candidate)
-        trial_logit = self.utility_head(trial_candidate)
+    def _candidate_fields(self, peak, candidate_probability, descriptor,
+                          foreground_probability, uncertainty, confidence,
+                          entropy, attention, valid):
+        score = peak * candidate_probability
+        packed = torch.cat([
+            descriptor, foreground_probability, uncertainty,
+            confidence, entropy, candidate_probability], dim=1)
+        numerator, mass = self._scatter_to_rgb(
+            packed, attention, score, valid)
+        numerator = self._window_sum(numerator, self.support_kernel)
+        mass = self._window_sum(mass, self.support_kernel)
+        packed_rgb = numerator / mass.clamp_min(1e-6)
+        support = (mass > 0).to(packed_rgb.dtype) * valid.to(packed_rgb.dtype)
+        descriptor_rgb = packed_rgb[:, :self.embed_dim]
+        scalar = packed_rgb[:, self.embed_dim:]
+        return dict(
+            thermal_condition=descriptor_rgb,
+            foreground_thermal=scalar[:, 0:1],
+            uncertainty_thermal=scalar[:, 1:2],
+            matching_confidence=scalar[:, 2:3],
+            matching_entropy=scalar[:, 3:4],
+            candidate_score=scalar[:, 4:5],
+            support=support)
 
-        target_rgb = self._select(target.float(), r_to_t).clamp(0.0, 1.0)
-        target_candidate = self._broadcast_candidates(
-            target_rgb, peak, peak_score).clamp(0.0, 1.0)
-        utility_valid = (support > 0) & valid
-        keep_ce = F.binary_cross_entropy_with_logits(
-            keep_logit, target_candidate, reduction='none')
-        trial_ce = F.binary_cross_entropy_with_logits(
-            trial_logit, target_candidate, reduction='none')
-        classification = _balanced_masked_mean(
-            0.5 * (keep_ce + trial_ce), target_candidate > 0.5,
-            utility_valid)
+    def _route_and_modulate(self, rgb, rgb_descriptor,
+                            foreground_rgb, uncertainty_rgb, fields):
+        support = fields['support']
+        foreground_thermal = fields['foreground_thermal']
+        uncertainty_thermal = fields['uncertainty_thermal']
+        disagreement = (foreground_thermal - foreground_rgb).abs()
+        route_input = torch.cat([
+            rgb_descriptor, fields['thermal_condition'],
+            foreground_thermal, foreground_rgb,
+            uncertainty_thermal, uncertainty_rgb,
+            fields['matching_entropy'], disagreement,
+            fields['matching_confidence']], dim=1)
+        route = self.router(route_input.float()).softmax(dim=1)
+        transfer_weight = route[:, 1:2]
+        film_input = torch.cat(
+            [rgb_descriptor, fields['thermal_condition']], dim=1)
+        film_raw = self.film_out(self.film_hidden(film_input.float()))
+        scale, shift = film_raw.chunk(2, dim=1)
+        modulation = (
+            scale.tanh() * self.rgb_norm(rgb).float() + shift.tanh())
+        trial_delta = self._cap_residual(modulation * support, rgb)
+        delta = self._cap_residual(
+            transfer_weight * trial_delta * support, rgb)
+        return delta, trial_delta, transfer_weight, film_raw
 
-        utility_target = torch.sigmoid(
-            (keep_ce.detach() - trial_ce.detach()) /
-            self.utility_temperature)
-        route_utility = _masked_mean(
-            F.binary_cross_entropy(
-                transfer_weight.clamp(1e-6, 1.0 - 1e-6),
-                utility_target, reduction='none'), utility_valid)
-        edl_target = ((1.0 - uncertainty_thermal) *
-                      uncertainty_rgb).detach().clamp(0.0, 1.0)
-        route_edl = _masked_mean(
-            F.binary_cross_entropy(
-                transfer_weight.clamp(1e-6, 1.0 - 1e-6),
-                edl_target, reduction='none'), utility_valid)
-        loss = classification + route_utility + self.edl_route_weight * route_edl
-        diagnostics = dict(
-            utility_keep_ce=_masked_mean(keep_ce, utility_valid).detach(),
-            utility_trial_ce=_masked_mean(trial_ce, utility_valid).detach(),
-            utility_target_mean=_masked_mean(
-                utility_target, utility_valid).detach(),
-            edl_transfer_target_mean=_masked_mean(
-                edl_target, utility_valid).detach())
-        return loss, diagnostics
+    def _cap_residual(self, residual, rgb):
+        """Cap every spatial correction vector relative to RGB magnitude."""
+        rgb_norm = torch.linalg.vector_norm(
+            rgb.float(), dim=1, keepdim=True)
+        scale = rgb_norm.clamp_min(self.feature_scale_floor)
+        maximum = self.residual_scale.float() * scale
+        residual_norm = torch.linalg.vector_norm(
+            residual.float(), dim=1, keepdim=True).clamp_min(1e-12)
+        factor = torch.minimum(
+            torch.ones_like(residual_norm), maximum / residual_norm)
+        return residual.float() * factor
 
-    def forward(self, rgb, thermal, valid_mask=None, target=None,
-                context_exclusion=None, return_aux=False):
+    @staticmethod
+    def _sample_peak(peak, score):
+        """Sample one Thermal candidate globally for detector utility."""
+        weighted = (peak * score).flatten()
+        sample = torch.zeros_like(weighted)
+        available = weighted > 0
+        if available.any():
+            selected = torch.multinomial(weighted.detach().clamp_min(0), 1)
+            sample[selected] = 1.0
+        return sample.reshape_as(peak).detach(), bool(available.any())
+
+    def _contrastive_loss(self, thermal_descriptor, rgb_descriptor,
+                          center_target, safe_background, valid, attention):
+        """Misalignment-tolerant local object-context contrast."""
+        thermal_z = F.normalize(
+            self.thermal_contrast(thermal_descriptor).float(), dim=1)
+        rgb_z = F.normalize(
+            self.rgb_contrast(rgb_descriptor).float(), dim=1)
+        rgb_positive = F.normalize(self._select(rgb_z, attention), dim=1)
+        positive_similarity = (
+            thermal_z * rgb_positive).sum(dim=1, keepdim=True)
+        per_image = []
+        for batch_idx in range(thermal_z.shape[0]):
+            centers = center_target[batch_idx, 0] > 0.5
+            background = safe_background[batch_idx, 0] & valid[batch_idx, 0]
+            if not centers.any() or not background.any():
+                continue
+            rgb_background = F.normalize(
+                rgb_z[batch_idx, :, background].mean(dim=1), dim=0)
+            thermal_background = F.normalize(
+                thermal_z[batch_idx, :, background].mean(dim=1), dim=0)
+            anchors = thermal_z[batch_idx, :, centers].transpose(0, 1)
+            positives = positive_similarity[batch_idx, 0, centers]
+            rgb_negative = anchors @ rgb_background
+            positive_rgb = rgb_positive[
+                batch_idx, :, centers].transpose(0, 1)
+            thermal_negative = positive_rgb @ thermal_background
+            loss = 0.5 * (
+                F.softplus((rgb_negative - positives) /
+                           self.search_temperature) +
+                F.softplus((thermal_negative - positives) /
+                           self.search_temperature))
+            per_image.append(loss.mean())
+        if not per_image:
+            return thermal_descriptor.sum() * 0.0
+        return torch.stack(per_image).mean()
+
+    def _evidential_loss(self, thermal_evidence, rgb_evidence,
+                         foreground_target, center_target,
+                         safe_background, valid, attention):
+        """Thermal pixel supervision plus weak RGB bag/background supervision."""
+        loss_thermal = evidential_binary_loss(
+            thermal_evidence, foreground_target, valid, self.edl_kl_weight)
+        rgb_probability, _ = self._probability_uncertainty(rgb_evidence)
+        bag_probability = self._select(rgb_probability, attention).clamp(
+            1e-6, 1.0 - 1e-6)
+        positive_mask = (center_target > 0.5) & valid
+        positive = _masked_mean(-bag_probability.log(), positive_mask)
+        background_mask = safe_background & valid
+        if background_mask.any():
+            background = evidential_binary_loss(
+                rgb_evidence, torch.zeros_like(foreground_target),
+                background_mask, self.edl_kl_weight)
+            loss_rgb = 0.5 * (positive + background)
+        else:
+            loss_rgb = positive
+        return 0.5 * (loss_thermal + loss_rgb)
+
+    def forward(self, rgb, thermal, valid_mask=None, center_target=None,
+                foreground_target=None, return_aux=False):
         if rgb.shape != thermal.shape:
             raise ValueError(
                 'OEPC requires equal same-stage RGB/Thermal shapes, got '
@@ -408,127 +490,156 @@ class ObjectCentricEvidentialCalibration(nn.Module):
             raise ValueError('OEPC channel mismatch')
 
         valid = self._as_valid_mask(valid_mask, rgb)
-        r_object, r_context, r_difference = self._object_context(rgb, valid)
-        t_object, t_context, t_difference = self._object_context(
-            thermal, valid)
-        r_embed = self.rgb_embed_norm(self.rgb_embed(r_difference))
-        t_embed = self.thermal_embed_norm(self.thermal_embed(t_difference))
-        candidate_logits = self.candidate_head(t_embed)
+        rgb_base = self.rgb_embed_norm(self.rgb_embed(rgb))
+        thermal_base = self.thermal_embed_norm(self.thermal_embed(thermal))
+        candidate_logits = self.candidate_head(thermal_base)
+        candidate_probability = candidate_logits.sigmoid()
 
-        r_to_t, match_confidence_dense, match_entropy_dense = (
-            self._local_attention(r_embed, t_embed, valid))
-        thermal_condition_dense = self._select(
-            self.thermal_value(t_embed), r_to_t)
-        candidate_probability_dense = self._select(
-            candidate_logits.sigmoid(), r_to_t).clamp(0.0, 1.0)
+        rgb_evidence_dense = F.softplus(self.rgb_evidence_head(rgb_base))
+        thermal_evidence_dense = F.softplus(
+            self.thermal_evidence_head(self.thermal_value(thermal_base)))
+        foreground_rgb, uncertainty_rgb = self._probability_uncertainty(
+            rgb_evidence_dense)
+        foreground_thermal, uncertainty_thermal = (
+            self._probability_uncertainty(thermal_evidence_dense))
 
-        peak, support = self._sparse_support(
-            candidate_probability_dense, valid)
-        r_candidate = self._broadcast_candidates(
-            r_embed, peak, candidate_probability_dense)
-        thermal_condition = self._broadcast_candidates(
-            thermal_condition_dense, peak, candidate_probability_dense)
-        match_confidence = self._broadcast_candidates(
-            match_confidence_dense, peak, candidate_probability_dense)
-        match_entropy = self._broadcast_candidates(
-            match_entropy_dense, peak, candidate_probability_dense)
-        candidate_score = self._broadcast_candidates(
-            candidate_probability_dense, peak, candidate_probability_dense)
+        _, _, rgb_difference, _, _ = self._object_context(
+            rgb, foreground_rgb, uncertainty_rgb, valid)
+        _, _, thermal_difference, _, _ = self._object_context(
+            thermal, foreground_thermal, uncertainty_thermal, valid)
+        rgb_descriptor = self.rgb_embed_norm(self.rgb_embed(rgb_difference))
+        thermal_descriptor = self.thermal_embed_norm(
+            self.thermal_embed(thermal_difference))
+        thermal_descriptor = self.thermal_value(thermal_descriptor)
 
-        rgb_evidence = F.softplus(self.rgb_evidence_head(r_candidate))
-        thermal_evidence = F.softplus(
-            self.thermal_evidence_head(thermal_condition))
-        uncertainty_rgb = self._uncertainty(rgb_evidence)
-        uncertainty_thermal = self._uncertainty(thermal_evidence)
-        route_input = torch.cat([
-            r_candidate, thermal_condition,
-            uncertainty_rgb.to(r_candidate.dtype),
-            uncertainty_thermal.to(r_candidate.dtype),
-            match_confidence.to(r_candidate.dtype),
-            candidate_score.to(r_candidate.dtype)], dim=1)
-        route = self.router(route_input.float()).softmax(dim=1)
-        transfer_weight = route[:, 1:2]
-
-        film_input = torch.cat([r_candidate, thermal_condition], dim=1)
-        film_raw = self.film_out(self.film_hidden(film_input.float()))
-        scale, shift = film_raw.chunk(2, dim=1)
-        modulation = (
-            scale.tanh() * self.rgb_norm(rgb).float() + shift.tanh())
-        trial_delta = self.residual_scale.float() * support * modulation
-        delta = transfer_weight * trial_delta
-        rgb_trial = rgb + trial_delta.to(rgb.dtype)
+        # Thermal candidate existence is fixed before matching to RGB.
+        peak = self._sparse_support(candidate_probability, valid)
+        attention, confidence_t, entropy_t = self._local_attention(
+            thermal_descriptor, rgb_descriptor, valid)
+        fields = self._candidate_fields(
+            peak, candidate_probability, thermal_descriptor,
+            foreground_thermal, uncertainty_thermal,
+            confidence_t, entropy_t, attention, valid)
+        delta, _, transfer_weight, film_raw = self._route_and_modulate(
+            rgb, rgb_descriptor, foreground_rgb, uncertainty_rgb, fields)
         rgb_calibrated = rgb + delta.to(rgb.dtype)
 
         if not return_aux:
             return rgb_calibrated
 
-        support_bool = support > 0
+        support_bool = fields['support'] > 0
         with torch.no_grad():
             base_norm = rgb.float().pow(2).mean(
                 dim=(1, 2, 3)).sqrt().clamp_min(1e-6)
             delta_norm = delta.pow(2).mean(dim=(1, 2, 3)).sqrt()
             valid_count = valid.sum().clamp_min(1)
+            cap_denominator = self.residual_scale * torch.linalg.vector_norm(
+                rgb.float(), dim=1).clamp_min(self.feature_scale_floor)
+            capped_ratio = (
+                torch.linalg.vector_norm(delta, dim=1) /
+                cap_denominator).amax()
 
         aux = dict(
             candidate_logits=candidate_logits,
-            candidate_probability=candidate_probability_dense.detach(),
+            candidate_probability=candidate_probability.detach(),
             candidate_peaks=peak.detach(),
-            spatial_support=support.detach(),
+            spatial_support=fields['support'].detach(),
             transfer_weight=transfer_weight.detach(),
+            foreground_rgb=foreground_rgb.detach(),
+            foreground_thermal=fields['foreground_thermal'].detach(),
             uncertainty_rgb=uncertainty_rgb.detach(),
-            uncertainty_thermal=uncertainty_thermal.detach(),
-            matching_confidence=match_confidence.detach(),
-            matching_entropy=match_entropy.detach(),
+            uncertainty_thermal=fields['uncertainty_thermal'].detach(),
+            matching_confidence=fields['matching_confidence'].detach(),
+            matching_entropy=fields['matching_entropy'].detach(),
             local_attention_entropy=_masked_mean(
-                match_entropy, support_bool).detach(),
+                fields['matching_entropy'], support_bool).detach(),
             matching_confidence_mean=_masked_mean(
-                match_confidence, support_bool).detach(),
+                fields['matching_confidence'], support_bool).detach(),
             candidate_mean=_masked_mean(
-                candidate_score, support_bool).detach(),
+                fields['candidate_score'], support_bool).detach(),
             candidate_count=peak.sum(dim=(1, 2, 3)).mean().detach(),
-            support_ratio=(support.sum() / valid_count).detach(),
+            support_ratio=(fields['support'].sum() / valid_count).detach(),
             transfer_mean=_masked_mean(
                 transfer_weight, support_bool).detach(),
+            foreground_rgb_mean=_masked_mean(
+                foreground_rgb, support_bool).detach(),
+            foreground_thermal_mean=_masked_mean(
+                fields['foreground_thermal'], support_bool).detach(),
             uncertainty_rgb_mean=_masked_mean(
                 uncertainty_rgb, support_bool).detach(),
             uncertainty_thermal_mean=_masked_mean(
-                uncertainty_thermal, support_bool).detach(),
+                fields['uncertainty_thermal'], support_bool).detach(),
             film_raw_rms=_masked_mean(
                 film_raw.float().square().mean(dim=1, keepdim=True).sqrt(),
                 support_bool).detach(),
             delta_ratio=(delta_norm / base_norm).mean().detach(),
+            residual_cap_ratio=capped_ratio.detach(),
             residual_scale=self.residual_scale.detach())
 
-        if target is not None:
-            if tuple(target.shape) != tuple(candidate_logits.shape):
+        if center_target is not None or foreground_target is not None:
+            if center_target is None or foreground_target is None:
                 raise ValueError(
-                    f'target {tuple(target.shape)} does not match candidate '
-                    f'logits {tuple(candidate_logits.shape)}')
-            if context_exclusion is None:
-                context_exclusion = target
-            if tuple(context_exclusion.shape) != tuple(target.shape):
-                raise ValueError('context_exclusion must match target shape')
-
-            r_obj_aux, r_ctx_aux, r_diff_aux = self._object_context(
-                rgb, valid, context_exclusion=context_exclusion)
-            t_obj_aux, t_ctx_aux, t_diff_aux = self._object_context(
-                thermal, valid, context_exclusion=context_exclusion)
-            r_embed_aux = self.rgb_embed_norm(self.rgb_embed(r_diff_aux))
-            t_embed_aux = self.thermal_embed_norm(self.thermal_embed(t_diff_aux))
-
+                    'center_target and foreground_target must be provided together')
+            expected = tuple(candidate_logits.shape)
+            if tuple(center_target.shape) != expected:
+                raise ValueError('center_target must match candidate logits')
+            if tuple(foreground_target.shape) != expected:
+                raise ValueError('foreground_target must match candidate logits')
+            expanded_objects = F.max_pool2d(
+                foreground_target.float(), self.search_kernel, stride=1,
+                padding=self.search_radius) > 0.5
+            safe_background = valid & ~expanded_objects
             aux['candidate_loss'] = balanced_binary_focal_loss(
-                candidate_logits, target, valid, gamma=self.focal_gamma)
+                candidate_logits, center_target, valid,
+                gamma=self.focal_gamma)
             aux['contrastive_loss'] = self._contrastive_loss(
-                t_diff_aux, r_diff_aux,
-                t_obj_aux, r_obj_aux, t_ctx_aux, r_ctx_aux,
-                target, valid)
+                thermal_descriptor, rgb_descriptor, center_target,
+                safe_background, valid, attention)
             aux['edl_loss'] = self._evidential_loss(
-                t_embed_aux, r_embed_aux, target, valid)
-            utility_loss, utility_diagnostics = self._utility_loss(
-                rgb, rgb_trial, r_candidate, peak,
-                candidate_probability_dense, support, transfer_weight,
-                uncertainty_rgb, uncertainty_thermal,
-                target, r_to_t, valid)
-            aux['utility_loss'] = utility_loss
-            aux.update(utility_diagnostics)
+                thermal_evidence_dense, rgb_evidence_dense,
+                foreground_target, center_target, safe_background,
+                valid, attention)
+
+            sample_peak, has_sample = self._sample_peak(
+                peak, candidate_probability)
+            if has_sample:
+                other_peak = (peak - sample_peak).clamp_min(0.0)
+                other_fields = self._candidate_fields(
+                    other_peak, candidate_probability, thermal_descriptor,
+                    foreground_thermal, uncertainty_thermal,
+                    confidence_t, entropy_t, attention, valid)
+                other_delta, _, _, _ = self._route_and_modulate(
+                    rgb, rgb_descriptor, foreground_rgb, uncertainty_rgb,
+                    other_fields)
+                sample_fields = self._candidate_fields(
+                    sample_peak, candidate_probability, thermal_descriptor,
+                    foreground_thermal, uncertainty_thermal,
+                    confidence_t, entropy_t, attention, valid)
+                _, sample_trial_delta, sample_transfer, _ = (
+                    self._route_and_modulate(
+                        rgb, rgb_descriptor, foreground_rgb, uncertainty_rgb,
+                        sample_fields))
+                combined_trial = self._cap_residual(
+                    other_delta + sample_trial_delta, rgb)
+                flat_index = sample_peak.flatten().nonzero().squeeze(1)[0]
+                spatial_size = rgb.shape[-2] * rgb.shape[-1]
+                sample_batch = int(flat_index.item() // spatial_size)
+                sample_support = sample_fields['support'] > 0
+                aux['utility_payload'] = dict(
+                    batch_index=sample_batch,
+                    rgb_keep=(rgb + other_delta.to(rgb.dtype))[
+                        sample_batch:sample_batch + 1],
+                    rgb_trial=(rgb + combined_trial.to(rgb.dtype))[
+                        sample_batch:sample_batch + 1],
+                    thermal=thermal[sample_batch:sample_batch + 1],
+                    route_prediction=_masked_mean(
+                        sample_transfer, sample_support),
+                    residual_penalty=_masked_mean(
+                        sample_trial_delta.square().mean(dim=1, keepdim=True),
+                        sample_support),
+                    level=None)
+                aux['utility_sampled'] = rgb.new_tensor(1.0)
+            else:
+                aux['utility_payload'] = None
+                aux['utility_sampled'] = rgb.new_tensor(0.0)
         return rgb_calibrated, aux

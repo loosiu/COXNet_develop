@@ -31,16 +31,16 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
     thermal_before = thermal.detach().clone()
     valid = torch.ones(2, 1, 10, 12, dtype=torch.bool)
     valid[:, :, -2:] = False
-    target = torch.zeros(2, 1, 10, 12)
-    target[0, :, 4, 5] = 1.0
-    target[1, :, 3, 8] = 1.0
-    context_exclusion = torch.zeros_like(target)
-    context_exclusion[0, :, 3:6, 4:7] = 1.0
-    context_exclusion[1, :, 2:5, 7:10] = 1.0
+    center_target = torch.zeros(2, 1, 10, 12)
+    center_target[0, :, 4, 5] = 1.0
+    center_target[1, :, 3, 8] = 1.0
+    foreground_target = torch.zeros_like(center_target)
+    foreground_target[0, :, 3:6, 4:7] = 1.0
+    foreground_target[1, :, 2:5, 7:10] = 1.0
 
     output, aux = module(
-        rgb, thermal, valid_mask=valid, target=target,
-        context_exclusion=context_exclusion, return_aux=True)
+        rgb, thermal, valid_mask=valid, center_target=center_target,
+        foreground_target=foreground_target, return_aux=True)
     assert output.shape == rgb.shape
     assert torch.equal(thermal.detach(), thermal_before)
     assert torch.equal(output[:, :, -2:], rgb[:, :, -2:])
@@ -56,14 +56,14 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
     assert 0.0 <= aux['uncertainty_rgb_mean'].item() <= 1.0
     assert 0.0 <= aux['uncertainty_thermal_mean'].item() <= 1.0
     assert aux['delta_ratio'].item() > 0
-    for key in ('candidate_loss', 'contrastive_loss', 'edl_loss',
-                'utility_loss'):
+    assert aux['residual_cap_ratio'].item() <= 1.0 + 1e-5
+    assert aux['utility_payload'] is not None
+    for key in ('candidate_loss', 'contrastive_loss', 'edl_loss'):
         assert torch.isfinite(aux[key]), key
 
     loss = output.square().mean()
     loss = loss + aux['candidate_loss']
-    loss = (loss + aux['contrastive_loss'] + aux['edl_loss'] +
-            aux['utility_loss'])
+    loss = loss + aux['contrastive_loss'] + aux['edl_loss']
     loss.backward()
     required = (
         ('RGB input', rgb),
@@ -75,7 +75,8 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
         ('Thermal evidence head', module.thermal_evidence_head.weight),
         ('router', module.router[-1].weight),
         ('FiLM output', module.film_out.weight),
-        ('utility head', module.utility_head.weight))
+        ('RGB contrast projection', module.rgb_contrast.weight),
+        ('Thermal contrast projection', module.thermal_contrast.weight))
     for name, parameter in required:
         _assert_nonzero_gradient(parameter, name)
 
@@ -161,17 +162,50 @@ def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
         img_shape=(80, 112, 3), pad_shape=(80, 112, 3),
         batch_input_shape=(80, 112)) for _ in range(2)]
 
-    features, aux = layer(
+    output = layer(
         visible, thermal, gt_bboxes=boxes, img_metas=metas)
+    assert isinstance(output, tuple) and len(output) == 3
+    features, aux, utility_payload = output
     assert [tuple(feature.shape) for feature in features] == [
         (2, 16, 10, 14), (2, 16, 5, 7)]
     for after, before in zip(thermal, thermal_before):
         assert torch.equal(after, before)
     for key in (
             'loss_oepc_targetness', 'loss_oepc_contrastive',
-            'loss_oepc_edl', 'loss_oepc_utility',
+            'loss_oepc_edl',
             'oepc_delta_ratio', 'oepc_support_ratio'):
         assert key in aux
+    assert utility_payload['level'] == 0
+
+
+def test_oepc_candidate_selection_precedes_rgb_matching():
+    module = ObjectCentricEvidentialCalibration(
+        channels=8, embed_dim=4, object_kernel=3, context_kernel=5,
+        search_radius=2, candidate_threshold=0.05, max_candidates=4)
+    probability = torch.zeros(1, 1, 7, 7)
+    probability[0, 0, 3, 3] = 0.7
+    valid = torch.ones_like(probability, dtype=torch.bool)
+    peak = module._sparse_support(probability, valid)
+    # A diffuse 5x5 correspondence would dilute 0.7 to 0.028, but candidate
+    # existence has already been decided in Thermal coordinates.
+    assert peak[0, 0, 3, 3] == 1
+
+
+def test_oepc_initialization_follows_user_seed():
+    common = dict(
+        in_channels=16, reduction=4, num_layers=2,
+        fs_type='fusionnet-xo', use_clfm=[], use_trpc=False,
+        use_oepc=True,
+        oepc_cfg=dict(apply_levels=(0,), embed_dim=8,
+                      object_kernel=3, context_kernel=5),
+        usepoolup=[])
+    torch.manual_seed(109)
+    first = FusionLayer(**common)
+    torch.manual_seed(110)
+    second = FusionLayer(**common)
+    assert not torch.equal(
+        first.oepc_layers['0'].rgb_embed.weight,
+        second.oepc_layers['0'].rgb_embed.weight)
 
 
 def test_oepc_preserves_control_hofm_initialization():

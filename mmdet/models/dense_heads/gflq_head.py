@@ -361,15 +361,26 @@ class GFLQHead(AnchorHead):
             dict[str, Tensor]: A dictionary of loss components.
         """
 
+        target_cache = self.build_loss_target_cache(
+            cls_scores, bbox_preds, gt_bboxes, gt_labels, img_metas,
+            gt_bboxes_ignore=gt_bboxes_ignore)
+        if target_cache is None:
+            return None
+        return self.loss_by_target_cache(
+            cls_scores, bbox_preds, centernesses, target_cache)
+
+    @force_fp32(apply_to=('cls_scores', 'bbox_preds'))
+    def build_loss_target_cache(self, cls_scores, bbox_preds, gt_bboxes,
+                                gt_labels, img_metas,
+                                gt_bboxes_ignore=None):
+        """Build one assignment cache reusable by OEPC counterfactuals."""
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
         assert len(featmap_sizes) == self.prior_generator.num_levels
-
         device = cls_scores[0].device
         anchor_list, valid_flag_list = self.get_anchors(
             featmap_sizes, img_metas, device=device)
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
-
-        cls_reg_targets = self.get_targets(
+        targets = self.get_targets(
             anchor_list,
             valid_flag_list,
             gt_bboxes,
@@ -379,36 +390,70 @@ class GFLQHead(AnchorHead):
             cls_scores=cls_scores,
             bbox_preds=bbox_preds,
             label_channels=label_channels)
-        if cls_reg_targets is None:
+        if targets is None:
             return None
+        (anchors, labels, label_weights, bbox_targets, bbox_weights,
+         num_total_pos, num_total_neg) = targets
+        num_total_samples = reduce_mean(torch.tensor(
+            num_total_pos, dtype=torch.float, device=device)).item()
+        return dict(
+            anchor_list=anchors,
+            labels_list=labels,
+            label_weights_list=label_weights,
+            bbox_targets_list=bbox_targets,
+            bbox_weights_list=bbox_weights,
+            num_total_samples=max(num_total_samples, 1.0),
+            num_total_pos=num_total_pos,
+            num_total_neg=num_total_neg)
 
-        (anchor_list, labels_list, label_weights_list, bbox_targets_list,
-         bbox_weights_list, num_total_pos, num_total_neg) = cls_reg_targets
-
-        num_total_samples = reduce_mean(
-            torch.tensor(num_total_pos, dtype=torch.float,
-                         device=device)).item()
-        num_total_samples = max(num_total_samples, 1.0)
-
-        losses_cls, losses_bbox, losses_dfl, loss_centerness,\
-            avg_factor = multi_apply(
+    @force_fp32(apply_to=('cls_scores', 'bbox_preds', 'centernesses'))
+    def loss_by_target_cache(self, cls_scores, bbox_preds, centernesses,
+                             target_cache):
+        """Compute the standard GFL loss with a precomputed assignment."""
+        losses_cls, losses_bbox, losses_dfl, loss_centerness, avg_factor = (
+            multi_apply(
                 self.loss_single,
-                anchor_list,
+                target_cache['anchor_list'],
                 cls_scores,
                 bbox_preds,
                 centernesses,
-                labels_list,
-                label_weights_list,
-                bbox_targets_list,
+                target_cache['labels_list'],
+                target_cache['label_weights_list'],
+                target_cache['bbox_targets_list'],
                 self.prior_generator.strides,
-                num_total_samples=num_total_samples)
-
+                num_total_samples=target_cache['num_total_samples']))
         avg_factor = sum(avg_factor)
         avg_factor = reduce_mean(avg_factor).clamp_(min=1).item()
-        losses_bbox = list(map(lambda x: x / avg_factor, losses_bbox))
-        losses_dfl = list(map(lambda x: x / avg_factor, losses_dfl))
+        losses_bbox = [loss / avg_factor for loss in losses_bbox]
+        losses_dfl = [loss / avg_factor for loss in losses_dfl]
         return dict(
-            loss_cls=losses_cls, loss_bbox=losses_bbox, loss_dfl=losses_dfl, loss_centerness=loss_centerness)
+            loss_cls=losses_cls,
+            loss_bbox=losses_bbox,
+            loss_dfl=losses_dfl,
+            loss_centerness=loss_centerness)
+
+    @force_fp32(apply_to=('cls_score', 'bbox_pred', 'centerness'))
+    def sampled_detector_loss(self, cls_score, bbox_pred, centerness,
+                              target_cache, level, batch_index):
+        """Detection loss for one sampled image/level with fixed assignment."""
+        anchors = target_cache['anchor_list'][level][
+            batch_index:batch_index + 1]
+        labels = target_cache['labels_list'][level][
+            batch_index:batch_index + 1]
+        label_weights = target_cache['label_weights_list'][level][
+            batch_index:batch_index + 1]
+        bbox_targets = target_cache['bbox_targets_list'][level][
+            batch_index:batch_index + 1]
+        positive = (labels >= 0) & (labels < self.num_classes)
+        num_samples = max(float(positive.sum().item()), 1.0)
+        (loss_cls, loss_bbox, loss_dfl, loss_centerness,
+         avg_factor) = self.loss_single(
+             anchors, cls_score, bbox_pred, centerness, labels,
+             label_weights, bbox_targets, self.prior_generator.strides[level],
+             num_samples)
+        avg_factor = max(float(avg_factor.detach().item()), 1.0)
+        return (loss_cls + loss_bbox / avg_factor +
+                loss_dfl / avg_factor + loss_centerness)
 
     def centerness_target(self, anchors, gts):
         # only calculate pos centerness targets, otherwise there may be nan
