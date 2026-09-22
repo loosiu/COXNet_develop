@@ -28,6 +28,13 @@ the architecture, losses, diagnostics, and implementation contract.
 
 ## Main Results
 
+### TRPC three-seed controlled result
+
+The completed seeds 0/1/2 are summarized in the COXNet Table 1 column order.
+The best-checkpoint mean mAP50 is **45.77 ± 0.43**, compared with
+**45.70 ± 0.49** for the paired COXNet reruns. See
+[the full per-seed table and interpretation](docs/trpc_table1_ko.md).
+
 ### RGBTDronePerson
 
 [[Dataset Link](https://nnnnerd.github.io/RGBTDronePerson/)]
