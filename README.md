@@ -16,10 +16,11 @@ This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
 The current method is **OEPC (Object-centric Evidential Prototype
 Calibration)**. RGB and Thermal FPNs both start at level 1 and therefore
-produce equal-stride P3/P4/P5/P6 features. OEPC uses local object-versus-context
-evidence and evidential keep/transfer routing to calibrate RGB only. The
-unchanged Thermal feature and calibrated RGB feature then enter the original
-AAM/HOFM.
+produce equal-stride P3/P4/P5/P6 features. OEPC retrieves local
+object-versus-context Thermal evidence around each RGB position, converts the
+retrieved candidate map into sparse RGB-coordinate ROI supports, and uses an
+evidential utility router to calibrate RGB only. The unchanged Thermal feature
+and calibrated RGB feature then enter the original AAM/HOFM.
 
 The OEPC path contains no cross-stage pairing, transposed convolution, DWT,
 IDWT, or CLFM frequency fusion. The first controlled config applies OEPC at P3,
@@ -31,17 +32,24 @@ and [the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
 ### OEPC data flow
 
 ```text
-RGB Pi ── local object/context evidence ── EDL keep/transfer ── RGB_cal Pi ──┐
-                                                                              ├─ AAM/HOFM
-Thermal Pi ───────────────────────────────────────────────────────────────────┘
+RGB Pi ── query ── local Thermal retrieval ── sparse ROI + utility router ── RGB_cal Pi ──┐
+                                                                                           ├─ AAM/HOFM
+Thermal Pi ────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The calibration path uses predicted dense local evidence during both training
-and inference. Thermal-coordinate GT boxes supervise only auxiliary
-targetness, object-context contrastive, and evidential losses; they are not
-used to select oracle calibration regions. A local cross-modal search allows
-RGB evidence to be associated with nearby Thermal evidence without globally
-warping either modality.
+The calibration path uses predicted local evidence during both training and
+inference. Local attention includes a spatial-distance prior but predicts no
+offset and performs no feature warping. Thermal candidate scores are first
+retrieved into RGB coordinates; local peaks and their ROI supports are then
+selected there. Consequently, RGB is exactly preserved outside candidate
+supports.
+
+Thermal-coordinate GT boxes supervise only auxiliary center targetness,
+object-context contrast, evidential reliability, and keep-versus-full-trial
+utility. They are not used to select calibration regions. Other annotated
+people are excluded from context rings and are never treated as contrastive
+negatives. The utility objective directly trains the router to prefer Thermal
+transfer only when a full-correction trial improves local object evidence.
 
 ---
 
@@ -51,11 +59,11 @@ warping either modality.
 
 OEPC has passed configuration construction, same-stage shape checks, full
 COXNet train forward/backward, padding identity, Thermal-input preservation,
-and non-zero gradient checks for its candidate, projector, contrastive, EDL,
-router, and RGB residual paths. Detection accuracy has not yet been reported;
-do not interpret structural validation as an AP improvement.
+and non-zero gradient checks for its sparse candidate, projector, contrastive,
+EDL, utility router, and RGB residual paths. Detection accuracy has not yet
+been reported; do not interpret structural validation as an AP improvement.
 
-The active P3 OEPC module has 88,583 parameters. In the current configs, the
+The active P3 OEPC module has 88,776 parameters. In the current configs, the
 complete model has 61.06M parameters versus 71.34M for the original model with
 four CLFM blocks. Runtime and FPS must still be measured on the target GPU.
 
@@ -198,8 +206,9 @@ python tools/train.py configs/coxnet/oepc/OEPC_same_stage.py \
     --seed 0 --deterministic
 ```
 
-This config uses RGB/Thermal FPN `start_level=1`, applies OEPC at P3, removes
-all CLFM/DeConv/DWT operations, and keeps the original AAM/HOFM and detector.
+This config uses RGB/Thermal FPN `start_level=1`, applies sparse OEPC at P3,
+removes all CLFM/DeConv/DWT operations, and keeps the original AAM/HOFM and
+detector. P4-P6 go directly to their same-stage AAM/HOFM blocks.
 
 **Same-stage TRPC, single GPU (seed 0)**
 

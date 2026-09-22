@@ -2,6 +2,7 @@ import torch
 
 from mmdet.models.utils.fusion_strategy import FusionLayer
 from mmdet.models.utils.oepc import ObjectCentricEvidentialCalibration
+from mmdet.models.utils.oepc import build_center_targets
 
 
 def _assert_nonzero_gradient(parameter, name):
@@ -18,6 +19,9 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
         object_kernel=3,
         context_kernel=5,
         search_radius=1,
+        distance_prior_weight=0.2,
+        candidate_threshold=0.0,
+        max_candidates=2,
         residual_scale=0.2,
         modulation_init_std=1e-2)
     module.train()
@@ -28,25 +32,38 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
     valid = torch.ones(2, 1, 10, 12, dtype=torch.bool)
     valid[:, :, -2:] = False
     target = torch.zeros(2, 1, 10, 12)
-    target[0, :, 3:6, 4:7] = 1.0
-    target[1, :, 2:5, 7:10] = 1.0
+    target[0, :, 4, 5] = 1.0
+    target[1, :, 3, 8] = 1.0
+    context_exclusion = torch.zeros_like(target)
+    context_exclusion[0, :, 3:6, 4:7] = 1.0
+    context_exclusion[1, :, 2:5, 7:10] = 1.0
 
     output, aux = module(
-        rgb, thermal, valid_mask=valid, target=target, return_aux=True)
+        rgb, thermal, valid_mask=valid, target=target,
+        context_exclusion=context_exclusion, return_aux=True)
     assert output.shape == rgb.shape
     assert torch.equal(thermal.detach(), thermal_before)
     assert torch.equal(output[:, :, -2:], rgb[:, :, -2:])
-    assert not torch.allclose(output[:, :, :-2], rgb[:, :, :-2])
+    support = aux['spatial_support'].bool()
+    outside = ~support.expand_as(output)
+    assert torch.equal(output[outside], rgb[outside])
+    assert not torch.allclose(output[support.expand_as(output)],
+                              rgb[support.expand_as(rgb)])
+    assert aux['candidate_peaks'].sum(dim=(1, 2, 3)).max() <= 2
+    assert 0.0 < aux['support_ratio'].item() < 1.0
+    assert 0.0 <= aux['matching_confidence_mean'].item() <= 1.0
     assert 0.0 <= aux['transfer_mean'].item() <= 1.0
     assert 0.0 <= aux['uncertainty_rgb_mean'].item() <= 1.0
     assert 0.0 <= aux['uncertainty_thermal_mean'].item() <= 1.0
     assert aux['delta_ratio'].item() > 0
-    for key in ('candidate_loss', 'contrastive_loss', 'edl_loss'):
+    for key in ('candidate_loss', 'contrastive_loss', 'edl_loss',
+                'utility_loss'):
         assert torch.isfinite(aux[key]), key
 
     loss = output.square().mean()
     loss = loss + aux['candidate_loss']
-    loss = loss + aux['contrastive_loss'] + aux['edl_loss']
+    loss = (loss + aux['contrastive_loss'] + aux['edl_loss'] +
+            aux['utility_loss'])
     loss.backward()
     required = (
         ('RGB input', rgb),
@@ -57,7 +74,8 @@ def test_oepc_same_stage_rgb_only_calibration_and_losses():
         ('RGB evidence head', module.rgb_evidence_head.weight),
         ('Thermal evidence head', module.thermal_evidence_head.weight),
         ('router', module.router[-1].weight),
-        ('FiLM output', module.film_out.weight))
+        ('FiLM output', module.film_out.weight),
+        ('utility head', module.utility_head.weight))
     for name, parameter in required:
         _assert_nonzero_gradient(parameter, name)
 
@@ -71,6 +89,30 @@ def test_oepc_rejects_cross_stage_features():
         assert 'equal same-stage RGB/Thermal shapes' in str(error)
     else:
         raise AssertionError('OEPC silently accepted cross-stage features')
+
+
+def test_oepc_distance_prior_prefers_same_coordinate_for_equal_features():
+    module = ObjectCentricEvidentialCalibration(
+        channels=8, embed_dim=4, object_kernel=3, context_kernel=5,
+        search_radius=1, distance_prior_weight=1.0)
+    query = torch.zeros(1, 4, 5, 5)
+    key = torch.zeros_like(query)
+    valid = torch.ones(1, 1, 5, 5, dtype=torch.bool)
+    attention, _, _ = module._local_attention(query, key, valid)
+    center_location = 2 * 5 + 2
+    assert attention[0, :, center_location].argmax().item() == 4
+
+
+def test_center_targets_use_thermal_box_centers():
+    boxes = [torch.tensor([
+        [16.0, 8.0, 32.0, 24.0],
+        [48.0, 32.0, 64.0, 48.0]])]
+    target = build_center_targets(
+        boxes, padded_size=(64, 80), feat_size=(8, 10),
+        device=torch.device('cpu'))
+    assert target.sum().item() == 2
+    assert target[0, 0, 2, 3] == 1
+    assert target[0, 0, 5, 7] == 1
 
 
 def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
@@ -89,9 +131,12 @@ def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
             object_kernel=3,
             context_kernel=5,
             search_radius=1,
+            candidate_threshold=0.0,
+            max_candidates=4,
             targetness_loss_weight=0.1,
             contrastive_loss_weight=0.05,
-            edl_loss_weight=0.01),
+            edl_loss_weight=0.01,
+            utility_loss_weight=0.05),
         usepoolup=[])
     layer.train()
 
@@ -124,7 +169,8 @@ def test_oepc_replaces_clfm_and_preserves_thermal_aam_input():
         assert torch.equal(after, before)
     for key in (
             'loss_oepc_targetness', 'loss_oepc_contrastive',
-            'loss_oepc_edl', 'oepc_delta_ratio'):
+            'loss_oepc_edl', 'loss_oepc_utility',
+            'oepc_delta_ratio', 'oepc_support_ratio'):
         assert key in aux
 
 

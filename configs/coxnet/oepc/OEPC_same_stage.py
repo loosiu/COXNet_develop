@@ -3,8 +3,10 @@
 # Complete CLFM replacement:
 #   RGB P3/P4/P5/P6, Thermal P3/P4/P5/P6 (same strides)
 #     -> local object/context ROI evidence
-#     -> local cross-modal search + evidential keep/transfer routing
-#     -> RGB-only residual calibration
+#     -> distance-aware local Thermal retrieval in RGB coordinates
+#     -> sparse candidate ROI support
+#     -> evidential + keep-versus-trial utility routing
+#     -> support-bounded RGB-only residual calibration
 #     -> original AAM/HOFM(RGB_calibrated, Thermal_original)
 #
 # No cross-stage pairing, DeConv, DWT/IDWT, frequency fusion, or global scene
@@ -27,13 +29,21 @@ model = dict(
         context_kernel=7,
         search_radius=2,
         search_temperature=0.2,
+        distance_prior_weight=0.1,
         candidate_prior=0.1,
+        candidate_threshold=0.05,
+        max_candidates=100,
+        peak_kernel=3,
+        support_kernel=3,
         residual_scale=0.2,
         modulation_init_std=1e-2,
         edl_kl_weight=1e-3,
+        utility_temperature=0.5,
+        edl_route_weight=0.5,
         targetness_loss_weight=0.1,
         contrastive_loss_weight=0.05,
         edl_loss_weight=0.01,
+        utility_loss_weight=0.05,
         focal_gamma=2.0,
     ),
 )

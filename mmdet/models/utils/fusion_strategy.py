@@ -6,7 +6,7 @@ from mmcv.runner import BaseModule
 from .wavelet_process import DWTC
 from .trpc import (TRPC, ThermalConditionedTRPC, make_padding_mask,
                    build_box_targets, balanced_binary_focal_loss)
-from .oepc import ObjectCentricEvidentialCalibration
+from .oepc import ObjectCentricEvidentialCalibration, build_center_targets
 
 
 class FusionLayer(nn.Module):
@@ -136,6 +136,8 @@ class FusionLayer(nn.Module):
             _oepc_cfg.pop('contrastive_loss_weight', 0.05))
         self.oepc_edl_loss_weight = float(
             _oepc_cfg.pop('edl_loss_weight', 0.01))
+        self.oepc_utility_loss_weight = float(
+            _oepc_cfg.pop('utility_loss_weight', 0.05))
         self.oepc_focal_gamma = float(_oepc_cfg.pop('focal_gamma', 2.0))
         self.last_oepc_aux = None
         if self.use_oepc:
@@ -227,14 +229,20 @@ class FusionLayer(nn.Module):
                         valid_mask = None if shapes is None else make_padding_mask(
                             shapes, padded, t_feat.shape[-2:], t_feat.device)
                         target = None
+                        context_exclusion = None
                         if (self.training and gt_bboxes is not None and
                                 shapes is not None):
-                            target, valid_mask = build_box_targets(
+                            context_exclusion, valid_mask = build_box_targets(
                                 gt_bboxes, shapes, padded, t_feat.shape[-2:],
                                 t_feat.device, ignore_boxes=gt_bboxes_ignore)
+                            target = build_center_targets(
+                                gt_bboxes, padded, t_feat.shape[-2:],
+                                t_feat.device)
                         v_feat, aux_i = self.oepc_layers[str(i)](
                             v_feat, t_feat, valid_mask=valid_mask,
-                            target=target, return_aux=True)
+                            target=target,
+                            context_exclusion=context_exclusion,
+                            return_aux=True)
                         oepc_aux[i] = aux_i
                 elif len(self.use_clfm) != 0:
                     if 'v' == self.use_clfm[0]:
@@ -309,9 +317,13 @@ class FusionLayer(nn.Module):
             if self.use_oepc and oepc_aux:
                 monitor_keys = (
                     'local_attention_entropy', 'candidate_mean',
+                    'matching_confidence_mean', 'candidate_count',
+                    'support_ratio',
                     'transfer_mean', 'uncertainty_rgb_mean',
                     'uncertainty_thermal_mean', 'film_raw_rms',
-                    'delta_ratio', 'residual_scale')
+                    'delta_ratio', 'residual_scale',
+                    'utility_keep_ce', 'utility_trial_ce',
+                    'utility_target_mean', 'edl_transfer_target_mean')
                 for key in monitor_keys:
                     values = [aux[key] for aux in oepc_aux.values()
                               if key in aux]
@@ -329,7 +341,9 @@ class FusionLayer(nn.Module):
                     ('contrastive_loss', 'loss_oepc_contrastive',
                      self.oepc_contrast_loss_weight),
                     ('edl_loss', 'loss_oepc_edl',
-                     self.oepc_edl_loss_weight))
+                     self.oepc_edl_loss_weight),
+                    ('utility_loss', 'loss_oepc_utility',
+                     self.oepc_utility_loss_weight))
                 for source, destination, weight in loss_specs:
                     values = [aux[source] for aux in oepc_aux.values()
                               if source in aux]
