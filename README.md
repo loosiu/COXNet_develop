@@ -138,8 +138,8 @@ The best-checkpoint mean mAP50 is **45.77 ± 0.43**, compared with
 **Step 1 — Clone the repository**
 
 ```bash
-git clone git@github.com:loosiu/TRPC-Thermal-Referenced-Prototype-Calibration.git
-cd TRPC-Thermal-Referenced-Prototype-Calibration
+git clone git@github.com:loosiu/COXNet_develop.git
+cd COXNet_develop
 ```
 
 **Step 2 — Install PyTorch**
