@@ -1,4 +1,6 @@
-# TF-OPC Implementation and Training Plan
+# TF-OPC Implementation and Training Plan (Superseded)
+
+> 이 계획은 `2026-09-23-topc-implementation.md`로 대체되었으며 실행하지 않는다.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

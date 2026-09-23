@@ -1,4 +1,6 @@
-# TF-OPC: Thermal-First Object-Prototype Calibration 설계
+# TF-OPC: Thermal-First Object-Prototype Calibration 설계 (Superseded)
+
+> 이 설계는 더 단순한 `2026-09-23-topc-design.md`로 대체되었다.
 
 ## 목적
 
