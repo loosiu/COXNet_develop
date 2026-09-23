@@ -108,3 +108,113 @@ def test_topc_objectness_is_thermal_only_and_uses_requested_shape():
     assert first.shape == (2, 1, 6, 7)
     assert torch.equal(first, second)
     assert not hasattr(module, 'rgb_candidate_head')
+
+
+def _selection(indices, active=None):
+    indices = torch.as_tensor(indices, dtype=torch.long)
+    if indices.ndim == 1:
+        indices = indices.unsqueeze(0)
+    if active is None:
+        active = torch.ones_like(indices, dtype=torch.bool)
+    else:
+        active = torch.as_tensor(active, dtype=torch.bool)
+        if active.ndim == 1:
+            active = active.unsqueeze(0)
+    return dict(indices=indices, active=active)
+
+
+def test_topc_reuses_one_projection_module_for_both_modalities():
+    module = _module(calibration_dim=4)
+    calls = []
+    handle = module.shared_projection.register_forward_hook(
+        lambda _module, inputs, _output: calls.append(inputs[0].data_ptr()))
+    rgb = torch.randn(1, 8, 3, 4)
+    thermal = torch.randn(1, 8, 3, 4)
+
+    rgb_shared, thermal_shared = module._shared_features(rgb, thermal)
+    handle.remove()
+
+    assert rgb_shared.shape == thermal_shared.shape == (1, 4, 3, 4)
+    assert len(calls) == 2
+    assert not hasattr(module, 'rgb_projection')
+    assert not hasattr(module, 'thermal_projection')
+    projection_weights = [
+        name for name, _ in module.named_parameters()
+        if 'projection' in name and name.endswith('weight')]
+    assert projection_weights == ['shared_projection.weight']
+
+
+def test_topc_thermal_prototype_is_heatmap_weighted_per_candidate():
+    module = _module(calibration_dim=1, object_kernel=3)
+    thermal_shared = torch.arange(9.0).reshape(1, 1, 3, 3)
+    probability = torch.arange(1.0, 10.0).reshape(1, 1, 3, 3)
+    valid = torch.ones(1, 1, 3, 3, dtype=torch.bool)
+
+    prototypes, mass, active = module._thermal_prototypes(
+        thermal_shared, probability, _selection([4, 0]), valid)
+
+    assert prototypes.shape == (1, 2, 1)
+    assert torch.allclose(prototypes[0, 0, 0], torch.tensor(240.0 / 45.0))
+    boundary_expected = torch.tensor((0 * 1 + 1 * 2 + 3 * 4 + 4 * 5) / 12.0)
+    assert torch.allclose(prototypes[0, 1, 0], boundary_expected)
+    assert torch.allclose(mass[0], torch.tensor([45.0, 12.0]))
+    assert active.all()
+
+
+def test_topc_thermal_prototype_respects_padding_and_zero_mass():
+    module = _module(calibration_dim=1, object_kernel=3)
+    thermal_shared = torch.arange(9.0).reshape(1, 1, 3, 3)
+    probability = torch.ones(1, 1, 3, 3)
+    valid = torch.zeros(1, 1, 3, 3, dtype=torch.bool)
+    valid[0, 0, 0, 0] = True
+
+    prototypes, mass, active = module._thermal_prototypes(
+        thermal_shared, probability, _selection([0, 8]), valid)
+
+    assert prototypes[0, 0, 0].item() == 0.0
+    assert mass[0, 0].item() == 1.0
+    assert active[0, 0]
+    assert prototypes[0, 1, 0].item() == 0.0
+    assert mass[0, 1].item() == 0.0
+    assert not active[0, 1]
+
+
+def test_topc_local_rgb_match_uses_thermal_query_and_masks_invalid_options():
+    module = _module(
+        calibration_dim=2, search_radius=1, search_temperature=1.0)
+    rgb_shared = torch.zeros(1, 2, 3, 3)
+    rgb_shared[0, :, 1, 1] = torch.tensor([1.0, 0.0])
+    rgb_shared[0, :, 1, 2] = torch.tensor([-1.0, 0.0])
+    prototypes = torch.tensor([[[1.0, 0.0]]])
+    valid = torch.zeros(1, 1, 3, 3, dtype=torch.bool)
+    valid[0, 0, 1, 1:3] = True
+
+    match = module._local_rgb_match(
+        rgb_shared, prototypes, torch.tensor([[4]]),
+        torch.tensor([[True]]), valid)
+
+    expected_attention = torch.softmax(torch.tensor([1.0, -1.0]), dim=0)
+    assert match['attention'].shape == (1, 1, 9)
+    assert torch.allclose(match['attention'].sum(-1), torch.ones(1, 1))
+    assert torch.count_nonzero(match['attention']).item() == 2
+    assert torch.allclose(
+        match['rgb_prototypes'][0, 0],
+        torch.tensor([expected_attention[0] - expected_attention[1], 0.0]))
+    assert torch.allclose(match['confidence'][0, 0], expected_attention.max())
+    assert 0.0 <= match['confidence'].min() <= match['confidence'].max() <= 1.0
+
+
+def test_topc_local_rgb_match_handles_inactive_and_all_invalid_windows():
+    module = _module(calibration_dim=2, search_radius=1)
+    rgb_shared = torch.randn(1, 2, 3, 3)
+    prototypes = torch.randn(1, 2, 2)
+    valid = torch.zeros(1, 1, 3, 3, dtype=torch.bool)
+
+    match = module._local_rgb_match(
+        rgb_shared, prototypes, torch.tensor([[4, 8]]),
+        torch.tensor([[True, False]]), valid)
+
+    assert torch.count_nonzero(match['attention']).item() == 0
+    assert torch.count_nonzero(match['rgb_prototypes']).item() == 0
+    assert torch.count_nonzero(match['confidence']).item() == 0
+    assert not match['valid_options'].any()

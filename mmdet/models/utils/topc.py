@@ -7,6 +7,9 @@ import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from .trpc import ChannelLayerNorm
 
 
 def build_topc_gaussian_targets(gt_boxes, padded_size, feat_size, device,
@@ -108,10 +111,27 @@ class ThermalAnchoredObjectPrototypeCalibration(nn.Module):
         prior_bias = math.log(candidate_prior / (1.0 - candidate_prior))
         nn.init.constant_(self.objectness_head[-1].bias, prior_bias)
 
+        # One projection defines the common calibration space.  Reusing both
+        # this convolution and its normalization is intentional: modality-
+        # specific projections would make the prototype discrepancy
+        # coordinate-system dependent.
+        self.shared_projection = nn.Conv2d(
+            channels, calibration_dim, 1, bias=False)
+        self.shared_norm = ChannelLayerNorm(calibration_dim)
+
     def objectness_logits(self, thermal):
         if thermal.ndim != 4 or thermal.shape[1] != self.channels:
             raise ValueError('thermal must be a BCHW tensor with TOPC channels')
         return self.objectness_head(thermal)
+
+    def _shared_features(self, rgb, thermal):
+        if tuple(rgb.shape) != tuple(thermal.shape):
+            raise ValueError('RGB and Thermal features must have equal shapes')
+        if rgb.ndim != 4 or rgb.shape[1] != self.channels:
+            raise ValueError('features must be BCHW tensors with TOPC channels')
+        rgb_shared = self.shared_norm(self.shared_projection(rgb))
+        thermal_shared = self.shared_norm(self.shared_projection(thermal))
+        return rgb_shared, thermal_shared
 
     def _select_candidates(self, logits, valid):
         if logits.ndim != 4 or logits.shape[1] != 1:
@@ -152,3 +172,103 @@ class ThermalAnchoredObjectPrototypeCalibration(nn.Module):
             active=active,
             dense_mask=dense_mask,
             probability=probability)
+
+    def _thermal_prototypes(self, thermal_shared, probability, selection,
+                            valid):
+        """Pool one heatmap-weighted local Thermal prototype per candidate."""
+        batch, dim, height, width = thermal_shared.shape
+        if tuple(probability.shape) != (batch, 1, height, width):
+            raise ValueError('probability must match the shared feature map')
+        if tuple(valid.shape) != tuple(probability.shape):
+            raise ValueError('prototype valid mask must match probability')
+        indices = selection['indices']
+        selected_active = selection['active'].bool()
+        if indices.ndim != 2 or tuple(indices.shape) != tuple(
+                selected_active.shape):
+            raise ValueError('candidate indices and active mask must be BxK')
+
+        kernel = self.object_kernel
+        kernel_area = kernel * kernel
+        spatial_size = height * width
+        feature_patches = F.unfold(
+            thermal_shared, kernel, padding=kernel // 2)
+        feature_patches = feature_patches.reshape(
+            batch, dim, kernel_area, spatial_size).permute(0, 3, 1, 2)
+        feature_patches = torch.gather(
+            feature_patches, 1,
+            indices[:, :, None, None].expand(-1, -1, dim, kernel_area))
+
+        weights = probability * valid.to(probability.dtype)
+        weight_patches = F.unfold(
+            weights, kernel, padding=kernel // 2).transpose(1, 2)
+        weight_patches = torch.gather(
+            weight_patches, 1,
+            indices[:, :, None].expand(-1, -1, kernel_area))
+        mass = weight_patches.sum(-1)
+        active = selected_active & (mass > 1e-12)
+        prototypes = (
+            feature_patches * weight_patches[:, :, None, :]).sum(-1)
+        prototypes = prototypes / mass.clamp_min(1e-12).unsqueeze(-1)
+        prototypes = prototypes * active.unsqueeze(-1).to(prototypes.dtype)
+        return prototypes, mass * selected_active.to(mass.dtype), active
+
+    def _local_rgb_match(self, rgb_shared, prototypes, indices, active,
+                         valid):
+        """Use each Thermal prototype to search a local RGB neighborhood."""
+        batch, dim, height, width = rgb_shared.shape
+        if prototypes.ndim != 3 or prototypes.shape[:2] != indices.shape:
+            raise ValueError('prototype and candidate dimensions do not match')
+        if prototypes.shape[2] != dim:
+            raise ValueError('prototype dimension does not match RGB space')
+        if tuple(valid.shape) != (batch, 1, height, width):
+            raise ValueError('matching valid mask must match RGB feature map')
+
+        window = 2 * self.search_radius + 1
+        option_count = window * window
+        spatial_size = height * width
+        rgb_windows = F.unfold(
+            rgb_shared, window, padding=self.search_radius)
+        rgb_windows = rgb_windows.reshape(
+            batch, dim, option_count, spatial_size).permute(0, 3, 1, 2)
+        rgb_windows = torch.gather(
+            rgb_windows, 1,
+            indices[:, :, None, None].expand(-1, -1, dim, option_count))
+
+        valid_windows = F.unfold(
+            valid.to(rgb_shared.dtype), window,
+            padding=self.search_radius).transpose(1, 2).bool()
+        valid_options = torch.gather(
+            valid_windows, 1,
+            indices[:, :, None].expand(-1, -1, option_count))
+        valid_options = valid_options & active[:, :, None].bool()
+
+        normalized_query = F.normalize(prototypes.float(), dim=-1)
+        normalized_options = F.normalize(rgb_windows.float(), dim=2)
+        similarity = (
+            normalized_query[:, :, :, None] * normalized_options).sum(2)
+        logits = similarity / self.search_temperature
+        attention = torch.softmax(
+            logits.masked_fill(~valid_options, -1e4), dim=-1)
+        attention = attention * valid_options.to(attention.dtype)
+        attention = attention / attention.sum(-1, keepdim=True).clamp_min(
+            1e-12)
+
+        rgb_prototypes = (
+            rgb_windows.float() * attention[:, :, None, :]).sum(-1)
+        rgb_prototypes = rgb_prototypes.to(rgb_shared.dtype)
+        confidence = attention.max(-1).values.to(rgb_shared.dtype)
+        similarity = similarity.to(rgb_shared.dtype)
+
+        coordinate_range = torch.arange(
+            -self.search_radius, self.search_radius + 1,
+            device=rgb_shared.device)
+        offset_y, offset_x = torch.meshgrid(
+            coordinate_range, coordinate_range, indexing='ij')
+        offsets = torch.stack([offset_y.flatten(), offset_x.flatten()], dim=-1)
+        return dict(
+            rgb_prototypes=rgb_prototypes,
+            attention=attention.to(rgb_shared.dtype),
+            similarity=similarity,
+            confidence=confidence,
+            offsets=offsets,
+            valid_options=valid_options)
