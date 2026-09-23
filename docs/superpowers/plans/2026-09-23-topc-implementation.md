@@ -4,7 +4,7 @@
 
 **Goal:** Implement, verify, push, and sequentially train seed 0/1/2 of Thermal-Anchored Object Prototype Calibration on GPU 1.
 
-**Architecture:** Thermal P3 objectness selects candidate-specific heatmap-weighted prototypes. Each prototype softly searches a radius-2 RGB P3 neighborhood, and its Thermal-minus-RGB discrepancy is projected back only through that attention support with normalized cosine confidence. Calibrated RGB P3 and untouched Thermal P3 enter the original AAM/HOFM.
+**Architecture:** Thermal P3 objectness selects candidate-specific heatmap-weighted prototypes in a projection space shared by RGB and Thermal. Each prototype softly searches a radius-2 RGB P3 neighborhood, and its Thermal-minus-RGB discrepancy is projected back only through that attention support with maximum-attention confidence. Calibrated RGB P3 and untouched Thermal P3 enter the original AAM/HOFM.
 
 **Tech Stack:** Python, PyTorch, MMCV/MMDetection, pytest, COXNet FusionNetXO, conda `coxmamba`, Git, GPU 1.
 
@@ -15,6 +15,7 @@
 - Work only in `/data/siwoo/COXNet-OEPC-v2`; preserve active worktrees/jobs.
 - Create `topc.py`; preserve legacy `oepc.py` and TRPC behavior.
 - P3 only; no P4, CLFM, DWT/IDWT, DeConv, EDL, utility, gate, FiLM, contrast, cycle.
+- RGB and Thermal must reuse one `1x1` calibration projection module; separate modality projections are forbidden.
 - Only `loss_topc_objectness = 0.1 * focal_heatmap_loss` is added to detection loss.
 - Push verified code to `origin/main` without force, then run seeds 0→1→2 sequentially on GPU 1.
 
@@ -54,15 +55,16 @@
 - Modify: `tests/test_models/test_utils/test_topc.py`
 
 **Interfaces:**
-- `_thermal_prototypes(thermal, probability, selection, valid)` returns `[N,K,C]` prototypes, prototype mass, and active mask.
-- `_local_rgb_match(rgb, prototypes, indices, active, valid)` returns RGB prototypes, attention, similarity, confidence, offsets, and valid options.
+- `_shared_features(rgb, thermal)` applies the same projection weight and returns `Z_R,Z_T`.
+- `_thermal_prototypes(thermal_shared, probability, selection, valid)` returns `[N,K,D]` prototypes, prototype mass, and active mask.
+- `_local_rgb_match(rgb_shared, prototypes, indices, active, valid)` returns RGB prototypes, attention, similarity, confidence, offsets, and valid options.
 
-- [ ] Write hand-derived prototype tests for heatmap-weighted 3x3 pooling, boundaries, padding, zero mass, and one prototype per candidate.
+- [ ] Write tests proving RGB/Thermal share one projection parameter object, plus hand-derived prototype tests for heatmap-weighted 3x3 pooling, boundaries, padding, zero mass, and one prototype per candidate.
 - [ ] Run prototype tests; expect missing method failure.
-- [ ] Implement unfold/gather weighted pooling with normalized valid heatmap mass.
+- [ ] Implement one shared `1x1 Conv(channels -> calibration_dim)` + channel LayerNorm used for both modalities, then unfold/gather weighted pooling over `Z_T` with normalized valid heatmap mass.
 - [ ] Write local matching tests for radius-2 search, Thermal-query direction, softmax sum 1, known weighted RGB prototype, invalid masking, and confidence bounds.
 - [ ] Run matching tests; expect missing method failure.
-- [ ] Implement RGB `1x1` semantic projection, cosine search, temperature 0.2 softmax, and normalized max-cosine confidence.
+- [ ] Implement cosine search in the shared space, temperature 0.2 softmax, and `attention.max()` confidence.
 - [ ] Run Task 2 tests and commit `Add TOPC object prototypes and RGB matching`.
 
 ### Task 3: Discrepancy residual and full module
@@ -100,7 +102,7 @@
 - [ ] Run fusion tests; expect constructor/path failure.
 - [ ] Integrate TOPC while preserving HOFM RNG initialization and existing OEPC/TRPC paths.
 - [ ] Write config contract test for both `start_level=1`, CLFM/TRPC/OEPC off, TOPC on, P3-only defaults, only objectness weight 0.1, and no P4/utility/EDL keys.
-- [ ] Create `configs/coxnet/topc/TOPC.py` with channels 256, object kernel 3, search radius 2, threshold 0.05, K 100, temperature 0.2, init std 1e-2, `wf_loss=False`.
+- [ ] Create `configs/coxnet/topc/TOPC.py` with channels 256, calibration dim 64, object kernel 3, search radius 2, threshold 0.05, K 100, temperature 0.2, init std 1e-2, `wf_loss=False`.
 - [ ] Run TOPC plus OEPC/TRPC regression tests and config build.
 - [ ] Commit `Integrate TOPC into COXNet`.
 

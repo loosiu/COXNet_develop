@@ -51,36 +51,50 @@ GT box의 float P3 중심에 normalized Gaussian target을 그린다. projected 
 heatmap probability는 prototype weight에 그대로 사용되어 detection gradient도 받는다.
 objectness prior는 `0.01`이다.
 
-## 2. Candidate-specific Thermal prototype
+## 2. Shared calibration space
+
+RGB와 Thermal P3에 **동일한 projection module `g`**를 재사용한다. 별도 modality
+projection을 만들지 않는다.
+
+```text
+Z_R = g(F_R)
+Z_T = g(F_T)
+```
+
+`g`는 `1x1 Conv(channels -> calibration_dim)`과 channel LayerNorm으로 구성한다.
+기본 `calibration_dim=64`다. prototype, cosine matching, semantic discrepancy는 모두
+이 shared space에서만 계산한다. 이 weight sharing이 없으면 `P_T-P_R`을 RGB에 부족한
+semantic information으로 해석하지 않는다.
+
+## 3. Candidate-specific Thermal prototype
 
 candidate `c_i`의 3x3 Thermal patch를 추출한다. valid mask와 heatmap probability를
 곱해 정규화한 뒤 raw Thermal P3 feature를 weighted pooling한다.
 
 ```text
 w_i(x) = H_T(x) * valid(x), x in N_3x3(c_i)
-P_T_i = sum_x w_i(x) F_T(x) / (sum_x w_i(x) + eps)
+P_T_i = sum_x w_i(x) Z_T(x) / (sum_x w_i(x) + eps)
 ```
 
 유효 weight mass가 0인 후보는 inactive로 처리한다. image-global prototype slot은 없다.
 각 candidate가 정확히 하나의 object prototype을 가진다.
 
-## 3. Local RGB semantic correspondence
+## 4. Local RGB semantic correspondence
 
-RGB P3는 learnable `1x1` projection `phi`로 Thermal semantic space에 보낸다. candidate
-center 반경 2의 5x5 RGB patch만 검색한다.
+candidate center 반경 2의 5x5 shared-space RGB patch만 검색한다.
 
 ```text
-K_R(x) = phi(F_R(x))
-s_i(x) = cosine(P_T_i, K_R(x))
+K_R(x) = Z_R(x)
+s_i(x) = cosine(P_T_i, Z_R(x))
 A_i(x) = softmax(s_i(x) / 0.2), x in valid local window
-P_R_i = sum_x A_i(x) K_R(x)
-confidence_i = clamp((max_x s_i(x) + 1) / 2, 0, 1)
+P_R_i = sum_x A_i(x) Z_R(x)
+confidence_i = max_x A_i(x)
 ```
 
 feature tensor를 이동하거나 warp하지 않는다. attention은 Thermal prototype과 의미적으로
 대응하는 RGB local support와 representation을 찾을 뿐이며 spatial alignment는 AAM에 남긴다.
 
-## 4. Prototype discrepancy residual
+## 5. Prototype discrepancy residual
 
 ```text
 D_i = P_T_i - P_R_i
@@ -130,6 +144,7 @@ gate나 norm cap은 두지 않아 최종 information flow를 위 식 하나로 �
 - Thermal objectness logits는 RGB 입력과 무관하다.
 - 각 GT Gaussian은 maximum 1이고 padding 밖은 0이다.
 - 인접 above-threshold cell이 local NMS 없이 후보로 남는다.
+- RGB/Thermal은 하나의 shared calibration projection weight를 사용한다.
 - prototype은 candidate별 heatmap-weighted 3x3 Thermal pooling이다.
 - association은 Thermal prototype query와 local RGB soft correspondence다.
 - learned confidence gate 없이 normalized cosine confidence만 사용한다.
