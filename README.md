@@ -1,4 +1,4 @@
-# COXNet CLFM Replacements: OEPC and TRPC
+# COXNet CLFM Replacements: TOPC, OEPC, and TRPC
 
 **IEEE Transactions on Circuits and Systems for Video Technology**, Vol. 36, No. 1, January 2026
 
@@ -14,69 +14,61 @@ COXNet is an RGBT tiny object detection framework that jointly addresses cross-m
 
 This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
-The current method is **OEPC (Object-centric Evidential Prototype
-Calibration)**. RGB and Thermal FPNs both start at level 1 and therefore
-produce equal-stride P3/P4/P5/P6 features. Balanced OEPC selects candidates
-independently in RGB and Thermal P3 rather than assuming Thermal is always the
-reliable source. Thermal candidates define possible RGB bags, while RGB
-candidates read possible Thermal bags. Separate foreground heads build
-object-minus-context descriptors, and an uncertainty-informed router
-calibrates RGB only. The unchanged Thermal feature and calibrated RGB feature
-then enter the original AAM/HOFM.
+The current controlled method is **TOPC (Thermal-Anchored Object Prototype
+Calibration)**. RGB and Thermal FPNs both start at level 1 and produce
+equal-stride P3/P4/P5/P6 features. TOPC acts only on P3: a Thermal objectness
+head selects object anchors, a shared RGB/Thermal projection defines one
+calibration space, and each Thermal prototype searches a radius-2 RGB
+neighborhood. The projected Thermal-minus-RGB discrepancy calibrates RGB only;
+the original Thermal feature is passed unchanged to AAM/HOFM.
 
-The OEPC path contains no cross-stage pairing, transposed convolution, DWT,
-IDWT, or CLFM frequency fusion. The first controlled config applies OEPC at P3,
-where tiny objects retain useful spatial support; P4-P6 remain same-stage and
-enter AAM/HOFM directly. Earlier global-prototype **TRPC** variants are retained
-as documented baselines and for reproducibility. See [docs/TRPC.md](docs/TRPC.md)
-and [the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
+TOPC contains no cross-stage pairing, transposed convolution, DWT/IDWT,
+frequency fusion, learned router, EDL, FiLM, contrastive loss, or P4 semantic
+branch. P4-P6 go directly to their same-stage AAM/HOFM blocks. Legacy OEPC and
+TRPC implementations remain available for controlled comparisons and
+reproducibility. See [the TOPC method note](docs/TOPC.md),
+[docs/TRPC.md](docs/TRPC.md), and
+[the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
 
-### OEPC data flow
+### TOPC data flow
 
 ```text
-Thermal P3 ── Thermal candidates ── object-context descriptor ── possible RGB bag ─┐
-                                                                                   ├─ union/support
-RGB P3 ────── RGB candidates ────────────────────── possible Thermal bag ───────────┘
-       ── uncertainty-informed router ── norm-capped RGB correction ── RGB_cal P3 ─┐
-                                                                                  ├─ AAM/HOFM
-Thermal P3 (unchanged) ────────────────────────────────────────────────────────────┘
+Thermal P3 ── objectness ── candidate-specific 3x3 prototype ───────────┐
+                         shared 1x1 projection space                    │
+RGB P3 ───────────────── radius-2 local semantic search ────────────────┤
+                                                                       ↓
+                     W(Thermal prototype - matched RGB prototype)
+                                  ↓ attention/confidence support
+RGB P3 ─────────────────────────── + ─────────────────────── RGB_cal P3 ─┐
+                                                                         ├─ AAM/HOFM
+Thermal P3 (unchanged) ──────────────────────────────────────────────────┘
 ```
 
-The calibration path uses predicted local evidence during both training and
-inference. Local attention includes a spatial-distance prior but predicts no
-offset and performs no feature warping. Candidate thresholding and top-k are
-performed separately in each modality, and their probability maps are never
-added at the same unaligned coordinate. RGB is exactly preserved outside
-predicted candidate supports, and each correction vector is explicitly capped
-relative to the local RGB feature magnitude. A candidate with no reliable
-Thermal context cannot inject an absolute object prototype as a fallback.
+The candidate decision is Thermal-first and uses threshold plus top-k without
+local-peak NMS, so adjacent P3 cells are not suppressed. Matching is a full
+softmax over the local RGB window and does not warp either modality. Maximum
+attention is the only reliability coefficient. Candidate residuals retain
+their attention magnitude, while overlapping residuals are mass-normalized to
+avoid unbounded amplification. RGB is exactly preserved outside the selected
+support and whenever no candidate survives.
 
-Thermal-coordinate GT box centers supervise Thermal candidates directly. RGB
-candidate and foreground heads use a fixed local bag, so learned matching
-attention cannot move a positive label. Thermal safe background excludes exact
-boxes; RGB safe background excludes boxes expanded by the allowed displacement.
-Other annotated people are never contrastive negatives. EDL is optional and,
-when enabled, supplies uncertainty to the router through a separate head. The
-balanced-core experiment disables detector counterfactual utility so the core
-path is trained end-to-end by the ordinary detection loss and small auxiliary
-losses. It also disables the inherited `kl_v2` fused-to-Thermal feature loss,
-which would reintroduce the assumption that Thermal is always the preferred
-reference.
+Thermal-coordinate GT centers supervise a normalized Gaussian objectness map.
+The only added objective is `0.1 * loss_topc_objectness`; detection loss trains
+the shared projection, matching, and discrepancy residual. The inherited
+fused-to-Thermal feature loss is disabled.
 
 ---
 
 ## Main Results
 
-### OEPC status
+### TOPC status
 
-Balanced OEPC has passed config construction, same-stage shape checks, CPU
-forward/backward, padding identity, Thermal-input preservation, residual-cap,
-dual-candidate, missing-context, and non-zero-gradient checks. Its three-seed
-training result is not yet available; structural validation must not be read as
-an AP improvement.
-
-The active P3 balanced OEPC module has 95,178 parameters. Runtime, complete
-model cost, and FPS must still be measured on the target GPU.
+TOPC has passed config construction, same-stage shape checks, CPU
+forward/backward, padding exclusion, Thermal-input preservation, adjacent
+candidate, overlap-normalization, empty-candidate identity, and non-zero
+gradient checks. Its three-seed result is not yet available; structural
+validation must not be read as an AP improvement. Runtime, complete-model cost,
+and FPS must still be measured on the target GPU.
 
 ### Initial cross-stage TRPC three-seed result
 
@@ -210,6 +202,17 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
+**TOPC complete CLFM replacement, single GPU (seed 0)**
+
+```bash
+python tools/train.py configs/coxnet/topc/TOPC.py \
+    --seed 0 --deterministic
+```
+
+Use the same command with seeds 1 and 2 and separate `--work-dir` values for a
+three-seed comparison. TOPC uses same-stage P3-P6 features, calibrates RGB P3
+only, leaves Thermal unchanged, and then runs the original AAM/HOFM.
+
 **Balanced OEPC complete CLFM replacement, single GPU (seed 0)**
 
 ```bash
@@ -256,6 +259,8 @@ configs/coxnet/
 ├── oepc/
 │   ├── OEPC_balanced_core.py
 │   └── OEPC_same_stage.py
+├── topc/
+│   └── TOPC.py
 └── trpc/
     ├── TRPC.py
     ├── TRPC_same_stage.py
@@ -268,7 +273,7 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/oepc/OEPC_balanced_core.py \
+    configs/coxnet/topc/TOPC.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```
