@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .trpc import ChannelLayerNorm
+from .trpc import ChannelLayerNorm, balanced_binary_focal_loss
 
 
 def build_topc_gaussian_targets(gt_boxes, padded_size, feat_size, device,
@@ -118,6 +118,11 @@ class ThermalAnchoredObjectPrototypeCalibration(nn.Module):
         self.shared_projection = nn.Conv2d(
             channels, calibration_dim, 1, bias=False)
         self.shared_norm = ChannelLayerNorm(calibration_dim)
+        self.residual_projection = nn.Linear(
+            calibration_dim, channels, bias=False)
+        nn.init.normal_(
+            self.residual_projection.weight, mean=0.0,
+            std=self.residual_init_std)
 
     def objectness_logits(self, thermal):
         if thermal.ndim != 4 or thermal.shape[1] != self.channels:
@@ -272,3 +277,154 @@ class ThermalAnchoredObjectPrototypeCalibration(nn.Module):
             confidence=confidence,
             offsets=offsets,
             valid_options=valid_options)
+
+    def _scatter_residual(self, residual, confidence, attention, indices,
+                          active, output_size):
+        """Write candidate residuals through attention with safe overlap."""
+        height, width = output_size
+        if height < 1 or width < 1:
+            raise ValueError('output_size must be positive')
+        if residual.ndim != 3:
+            raise ValueError('residual must have shape (B,K,C)')
+        batch, candidate_count, channels = residual.shape
+        option_count = (2 * self.search_radius + 1) ** 2
+        if tuple(confidence.shape) != (batch, candidate_count):
+            raise ValueError('confidence must have shape (B,K)')
+        if tuple(attention.shape) != (
+                batch, candidate_count, option_count):
+            raise ValueError('attention has an invalid search dimension')
+        if tuple(indices.shape) != (batch, candidate_count):
+            raise ValueError('indices must have shape (B,K)')
+        if tuple(active.shape) != (batch, candidate_count):
+            raise ValueError('active must have shape (B,K)')
+
+        coordinate_range = torch.arange(
+            -self.search_radius, self.search_radius + 1,
+            device=residual.device)
+        offset_y, offset_x = torch.meshgrid(
+            coordinate_range, coordinate_range, indexing='ij')
+        offset_y = offset_y.flatten()[None, None]
+        offset_x = offset_x.flatten()[None, None]
+        source_y = indices.div(width, rounding_mode='floor')[:, :, None]
+        source_x = indices.remainder(width)[:, :, None]
+        destination_y = source_y + offset_y
+        destination_x = source_x + offset_x
+        in_bounds = (
+            (destination_y >= 0) & (destination_y < height) &
+            (destination_x >= 0) & (destination_x < width))
+        destination = (
+            destination_y.clamp(0, height - 1) * width +
+            destination_x.clamp(0, width - 1)).long()
+
+        weight = attention.float() * active[:, :, None].to(
+            attention.dtype).float() * in_bounds.to(attention.dtype).float()
+        candidate_value = (
+            residual.float() * confidence.float()[:, :, None])
+        contribution = (
+            candidate_value[:, :, :, None] * weight[:, :, None, :])
+
+        spatial_size = height * width
+        numerator = residual.new_zeros(
+            batch, channels, spatial_size, dtype=torch.float32)
+        numerator.scatter_add_(
+            2,
+            destination[:, :, None, :].expand(
+                -1, -1, channels, -1).permute(0, 2, 1, 3).reshape(
+                    batch, channels, -1),
+            contribution.permute(0, 2, 1, 3).reshape(
+                batch, channels, -1))
+        mass = residual.new_zeros(batch, 1, spatial_size, dtype=torch.float32)
+        mass.scatter_add_(
+            2, destination.reshape(batch, 1, -1),
+            weight.reshape(batch, 1, -1))
+        average = numerator / mass.clamp_min(1e-12)
+        support = mass.clamp(max=1.0)
+        delta = support * average
+        return (
+            delta.reshape(batch, channels, height, width).to(residual.dtype),
+            mass.reshape(batch, 1, height, width).to(residual.dtype))
+
+    @staticmethod
+    def _as_valid_mask(valid_mask, feature):
+        batch, _, height, width = feature.shape
+        if valid_mask is None:
+            return torch.ones(
+                batch, 1, height, width, device=feature.device,
+                dtype=torch.bool)
+        if tuple(valid_mask.shape) == (batch, height, width):
+            valid_mask = valid_mask[:, None]
+        if tuple(valid_mask.shape) != (batch, 1, height, width):
+            raise ValueError(
+                'valid mask must match TOPC feature spatial dimensions')
+        return valid_mask.bool()
+
+    def forward(self, rgb, thermal, valid_mask=None, center_target=None,
+                return_aux=False):
+        if tuple(rgb.shape) != tuple(thermal.shape):
+            raise ValueError(
+                'TOPC requires equal same-stage RGB/Thermal shapes')
+        if rgb.ndim != 4 or rgb.shape[1] != self.channels:
+            raise ValueError('TOPC feature channel mismatch')
+        valid = self._as_valid_mask(valid_mask, rgb)
+        candidate_logits = self.objectness_logits(thermal)
+        selection = self._select_candidates(candidate_logits, valid)
+
+        rgb_shared, thermal_shared = self._shared_features(rgb, thermal)
+        thermal_prototypes, prototype_mass, active = (
+            self._thermal_prototypes(
+                thermal_shared, selection['probability'], selection, valid))
+        match = self._local_rgb_match(
+            rgb_shared, thermal_prototypes, selection['indices'], active,
+            valid)
+        discrepancy = thermal_prototypes - match['rgb_prototypes']
+        candidate_residual = self.residual_projection(discrepancy.float())
+        candidate_residual = candidate_residual.to(rgb.dtype)
+        delta, scatter_mass = self._scatter_residual(
+            candidate_residual, match['confidence'], match['attention'],
+            selection['indices'], active, rgb.shape[-2:])
+        delta = delta * valid.to(delta.dtype)
+        calibrated_rgb = rgb + delta
+
+        if not return_aux:
+            return calibrated_rgb
+
+        if center_target is not None:
+            if tuple(center_target.shape) != tuple(candidate_logits.shape):
+                raise ValueError(
+                    'center_target must match TOPC candidate logits')
+            objectness_loss = balanced_binary_focal_loss(
+                candidate_logits, center_target.to(candidate_logits.dtype),
+                valid, gamma=self.focal_gamma)
+        else:
+            objectness_loss = candidate_logits.sum() * 0.0
+
+        active_float = active.to(rgb.dtype)
+        active_count = active_float.sum().clamp_min(1.0)
+        valid_count = valid.sum().clamp_min(1)
+        with torch.no_grad():
+            base_norm = rgb.float().square().mean(
+                dim=(1, 2, 3)).sqrt().clamp_min(1e-12)
+            delta_norm = delta.float().square().mean(
+                dim=(1, 2, 3)).sqrt()
+            candidate_mean = (
+                selection['scores'] * active_float).sum() / active_count
+            confidence_mean = (
+                match['confidence'] * active_float).sum() / active_count
+
+        aux = dict(
+            objectness_loss=objectness_loss,
+            candidate_logits=candidate_logits,
+            candidate_probability=selection['probability'].detach(),
+            candidate_mask=selection['dense_mask'].detach(),
+            candidate_count=active_float.sum(dim=1).float().mean().detach(),
+            candidate_mean=candidate_mean.detach(),
+            prototype_mass=prototype_mass.detach(),
+            matching_confidence=match['confidence'].detach(),
+            matching_confidence_mean=confidence_mean.detach(),
+            local_attention=match['attention'].detach(),
+            spatial_support=scatter_mass.clamp(max=1.0).detach(),
+            support_ratio=(
+                (scatter_mass > 0).sum() / valid_count).detach(),
+            delta=delta.detach(),
+            delta_ratio=(delta_norm / base_norm).mean().detach())
+        return calibrated_rgb, aux

@@ -138,10 +138,10 @@ def test_topc_reuses_one_projection_module_for_both_modalities():
     assert len(calls) == 2
     assert not hasattr(module, 'rgb_projection')
     assert not hasattr(module, 'thermal_projection')
-    projection_weights = [
-        name for name, _ in module.named_parameters()
-        if 'projection' in name and name.endswith('weight')]
-    assert projection_weights == ['shared_projection.weight']
+    parameter_names = {name for name, _ in module.named_parameters()}
+    assert 'shared_projection.weight' in parameter_names
+    assert not any(name.startswith(('rgb_projection', 'thermal_projection'))
+                   for name in parameter_names)
 
 
 def test_topc_thermal_prototype_is_heatmap_weighted_per_candidate():
@@ -218,3 +218,106 @@ def test_topc_local_rgb_match_handles_inactive_and_all_invalid_windows():
     assert torch.count_nonzero(match['rgb_prototypes']).item() == 0
     assert torch.count_nonzero(match['confidence']).item() == 0
     assert not match['valid_options'].any()
+
+
+def test_topc_scatter_keeps_single_candidate_attention_magnitude():
+    module = _module(channels=1, calibration_dim=1, search_radius=1)
+    residual = torch.tensor([[[2.0]]])
+    confidence = torch.tensor([[0.5]])
+    attention = torch.zeros(1, 1, 9)
+    attention[0, 0, 4] = 0.75
+    attention[0, 0, 5] = 0.25
+
+    delta, mass = module._scatter_residual(
+        residual, confidence, attention, torch.tensor([[4]]),
+        torch.tensor([[True]]), output_size=(3, 3))
+
+    expected = torch.zeros(1, 1, 3, 3)
+    expected[0, 0, 1, 1] = 0.75
+    expected[0, 0, 1, 2] = 0.25
+    assert torch.allclose(delta, expected)
+    assert torch.allclose(mass[0, 0, 1, 1:3], torch.tensor([0.75, 0.25]))
+    assert torch.count_nonzero(delta).item() == 2
+
+
+def test_topc_scatter_normalizes_overlap_and_drops_out_of_bounds_offsets():
+    module = _module(channels=1, calibration_dim=1, search_radius=1)
+    residual = torch.tensor([[[1.0], [3.0], [7.0]]])
+    confidence = torch.ones(1, 3)
+    attention = torch.zeros(1, 3, 9)
+    attention[0, :2, 4] = 1.0
+    attention[0, 2, 0] = 1.0  # up-left from cell zero is outside the map
+
+    delta, mass = module._scatter_residual(
+        residual, confidence, attention, torch.tensor([[4, 4, 0]]),
+        torch.tensor([[True, True, True]]), output_size=(3, 3))
+
+    assert delta[0, 0, 1, 1].item() == 2.0
+    assert mass[0, 0, 1, 1].item() == 2.0
+    assert torch.count_nonzero(delta).item() == 1
+
+
+def test_topc_forward_is_identity_without_candidates_and_keeps_thermal_input():
+    module = _module(
+        candidate_threshold=1.0, calibration_dim=4, search_radius=1)
+    rgb = torch.randn(2, 8, 4, 5)
+    thermal = torch.randn(2, 8, 4, 5)
+    thermal_before = thermal.clone()
+
+    output, aux = module(rgb, thermal, return_aux=True)
+
+    assert torch.equal(output, rgb)
+    assert torch.equal(thermal, thermal_before)
+    assert aux['candidate_count'].item() == 0.0
+    assert torch.count_nonzero(aux['delta']).item() == 0
+
+
+def test_topc_forward_has_only_objectness_loss_and_no_learned_router_components():
+    torch.manual_seed(19)
+    module = _module(
+        candidate_threshold=0.0, calibration_dim=4, search_radius=1,
+        max_candidates=2)
+    rgb = torch.randn(1, 8, 4, 5, requires_grad=True)
+    thermal = torch.randn(1, 8, 4, 5, requires_grad=True)
+    center_target = torch.zeros(1, 1, 4, 5)
+    center_target[0, 0, 2, 2] = 1.0
+
+    output, aux = module(
+        rgb, thermal, center_target=center_target, return_aux=True)
+    total = output.square().mean() + aux['objectness_loss']
+    total.backward()
+
+    assert output.shape == rgb.shape
+    assert {key for key in aux if key.endswith('_loss')} == {
+        'objectness_loss'}
+    for forbidden in ('gate', 'router', 'film', 'edl', 'utility'):
+        assert not any(forbidden in name.lower()
+                       for name, _ in module.named_modules())
+    assert module.objectness_head[-1].weight.grad.abs().sum().item() > 0
+    assert module.shared_projection.weight.grad.abs().sum().item() > 0
+    assert module.residual_projection.weight.grad.abs().sum().item() > 0
+    assert rgb.grad.abs().sum().item() > 0
+    assert thermal.grad.abs().sum().item() > 0
+    assert torch.isfinite(total)
+
+
+def test_topc_forward_validates_targets_and_masks():
+    module = _module(candidate_threshold=0.0)
+    rgb = torch.randn(1, 8, 3, 3)
+    thermal = torch.randn_like(rgb)
+
+    try:
+        module(rgb, thermal, valid_mask=torch.ones(1, 1, 2, 3))
+    except ValueError as error:
+        assert 'valid' in str(error)
+    else:
+        raise AssertionError('TOPC accepted a mismatched valid mask')
+
+    try:
+        module(
+            rgb, thermal, center_target=torch.zeros(1, 1, 2, 3),
+            return_aux=True)
+    except ValueError as error:
+        assert 'center_target' in str(error)
+    else:
+        raise AssertionError('TOPC accepted a mismatched center target')
