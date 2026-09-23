@@ -1,9 +1,10 @@
-# OEPC-v2: Thermal-first Tiny-object RGB Calibration 설계
+# OEPC-v2 Final: Thermal-guided Object-centric Calibration 설계
 
 ## 1. 목적과 현재 상태
 
 이 문서는 COXNet의 CLFM을 완전히 제거한 same-stage RGB/Thermal FPN 구조에서,
-P3 RGB feature만 선택적으로 강화하는 OEPC-v2를 정의한다. 최종 목적은
+P3 RGB feature만 선택적으로 강화하는 OEPC-v2 Final을 정의한다. 모듈의 실제
+역할명은 Thermal-guided Object-centric Calibration(TOC)으로 둔다. 최종 목적은
 RGB에서 약하지만 Thermal에서 식별 가능한 작은 사람의 단서를 RGB P3에 전달하되,
 RGB의 위치별 세부 구조와 AAM의 정렬 역할을 보존하는 것이다.
 
@@ -64,7 +65,7 @@ Thermal candidate heatmap + differentiable support
 Thermal query -> local RGB descriptor association
           |
           v
-bounded spatial RGB modulation + detector-utility router
+bounded direct RGB residual + detector-utility router
           |
           v
 RGB P3 calibrated ------------------+
@@ -94,7 +95,7 @@ L_M = B_M - ValidAvgPool3(B_M)
 `P_fg,M`을 예측하고, 각 중심 위치에서 ring weight를 다음과 같이 정의한다.
 
 ```text
-W_M = ring7 * valid * (1 - P_fg,M)
+W_M = ring7 * valid * (1 - stopgrad(P_fg,M))
 context_mass = sum(W_M)
 context_coverage = context_mass / sum(ring7 * valid)
 C_M = sum(W_M * unfolded(B_M)) / max(context_mass, eps)
@@ -102,8 +103,10 @@ A_M = 1[context_coverage >= min_context_coverage]
 Q_M = (B_M - C_M) * A_M
 ```
 
-기본 `min_context_coverage`는 `0.25`다. 유효 ring 자체가 없는 경우 coverage는
-0으로 두고 context-dependent auxiliary loss를 제외한다. 기존의
+foreground probability는 context weight에서 stop-gradient해 detector loss가
+foreground mask를 편법으로 바꾸지 못하게 한다. foreground head 자체는 별도
+foreground loss로 학습한다. 기본 `min_context_coverage`는 `0.25`다. 유효 ring
+자체가 없는 경우 coverage는 0으로 두고 context-dependent auxiliary loss를 제외한다. 기존의
 `context_mass > 1e-6` 조건처럼 거의 모든 위치를 유효하다고 처리하지 않는다.
 
 최종 descriptor는 다음과 같다.
@@ -125,7 +128,7 @@ P_T = sigmoid(Z_T)
 ```
 
 `rgb_candidate_head`, RGB candidate loss, RGB-origin indicator는 제거한다.
-RGB foreground/evidence head는 context 구성과 router 입력을 위해 유지할 수 있지만,
+RGB foreground head는 context 구성과 router 입력을 위해 유지하지만,
 후보의 존재 여부를 결정하지 않는다.
 
 ### 6.1 Gaussian center target
@@ -136,13 +139,16 @@ GT box를 P3 좌표로 변환한 폭과 높이를 `w_f`, `h_f`라 할 때 다음
 ```text
 radius = clamp(ceil(0.5 * sqrt(w_f * h_f)), min=1, max=2)
 sigma = (2 * radius + 1) / 6
-Y(x, y) = exp(-((x-cx)^2 + (y-cy)^2) / (2*sigma^2))
+G_i(x, y) = exp(-((x-cx)^2 + (y-cy)^2) / (2*sigma^2))
+G_i_normalized = G_i / max(G_i)
+Y(x, y) = max_i(G_i_normalized(x, y))
 ```
 
-여러 GT의 Gaussian이 겹치면 pixel별 maximum을 취한다. 중심은 float 좌표로
-유지해 양자화 오차를 줄인다. padded image 크기와 실제 P3 shape에서 scale을
-계산하며 valid mask 밖 target은 0이다. 기존 balanced focal objective는 soft target을
-받도록 테스트로 고정한다.
+각 객체의 잘린 Gaussian window 안 maximum을 1로 정규화한 뒤, 여러 GT가 겹치면
+pixel별 maximum을 취한다. 따라서 sub-pixel 중심이어도 적어도 한 positive cell의
+target이 정확히 1이다. 중심은 float 좌표로 유지해 양자화 오차를 줄인다. padded
+image 크기와 실제 P3 shape에서 scale을 계산하며 valid mask 밖 target은 0이다.
+기존 balanced focal objective는 soft target을 받도록 테스트로 고정한다.
 
 ### 6.2 초기 prior
 
@@ -200,28 +206,54 @@ attention에는 동일 객체 correspondence label을 부여하지 않는다. co
 auxiliary loss를 유지할 경우에는 Thermal GT foreground와 신뢰 가능한 background를
 구분하는 projection 공간에만 적용하고, 다른 사람을 자동 negative로 사용하지 않는다.
 
-## 9. RGB calibration과 안전 조건
+## 9. Direct RGB residual과 단일 router
 
-RGB calibration은 기존 spatial FiLM residual의 역할을 유지한다.
+RGB calibration은 FiLM scale/shift 대신 Thermal object evidence를 직접 주입하는
+residual branch를 사용한다.
 
 ```text
-[scale, shift] = Film([D_R, H_T])
-raw_delta = tanh(scale) * LN(F_R^3) + tanh(shift)
-G = transfer_probability(router_inputs)
-delta = Cap(S_R * G * raw_delta, residual_scale, F_R^3)
+Z = [D_R, H_T, H_T - D_R, H_T * D_R]
+raw_delta = Conv3x3(GELU(Conv1x1(Z)))
+```
+
+첫 projection은 `4 * embed_dim -> hidden_dim`, 마지막 projection은
+`hidden_dim -> channels`다. 마지막 projection weight는 zero-init하지 않고
+`Normal(0, 1e-2)`, bias는 0으로 초기화해 첫 iteration부터 upstream에 gradient가
+도달하게 한다.
+
+`S_R`과 `H_T`는 Thermal support/condition을 local association으로 RGB에 옮긴
+결과다. 모든 신뢰도는 별도 곱셈 gate가 아니라 하나의 router 입력으로만 사용한다.
+
+```text
+router_input = [D_R, H_T, abs(H_T - D_R),
+                P_T_mapped, P_fg,R, P_fg,T_mapped,
+                match_confidence, match_entropy, context_reliability]
+G = sigmoid(MLP(router_input))
+delta_0 = S_R * G * raw_delta
+```
+
+router 마지막 bias는 0으로 초기화해 초기 `G=0.5`가 되게 한다. candidate score는
+`S_R`을 만드는 데 한 번 사용되며 matching confidence, foreground probability,
+context reliability는 `G`의 입력일 뿐 correction에 다시 곱하지 않는다. 특히
+`P_fg,R`이 낮다는 이유만으로 correction을 0으로 만들지 않는다.
+
+각 RGB 위치의 channel RMS를 이용해 residual을 제한한다.
+
+```text
+r_F(x, y) = sqrt(mean_c(F_R(c, x, y)^2))
+r_delta(x, y) = sqrt(mean_c(delta_0(c, x, y)^2))
+gamma(x, y) = min(1, residual_scale * r_F / (r_delta + eps))
+delta = gamma * delta_0
 F_R_cal = F_R^3 + delta
 ```
 
-여기서 `S_R`과 `H_T`는 Thermal support/condition을 local association으로 RGB에
-옮긴 결과다. router 입력에는 RGB/Thermal foreground probability, EDL uncertainty,
-attention confidence/entropy, context availability, local modality disagreement를 쓴다.
-RGB foreground가 낮다는 이유만으로 correction을 0으로 만드는 곱셈 gate는 두지 않는다.
+기본 `residual_scale=0.2`다.
 
 안전 조건은 다음과 같다.
 
 - `S_R == 0`인 위치는 bitwise 가능한 범위에서 exact identity다.
 - residual norm은 입력 feature norm과 `residual_scale`로 제한한다.
-- support와 route는 `[0, 1]` 범위다.
+- support와 단일 route `G`는 `[0, 1]` 범위다.
 - overlapping candidate의 condition은 평균하고 support는 최대 1로 제한한다.
 - `thermal_out is thermal_in`을 보장해 Thermal P3를 수정하지 않는다.
 
@@ -237,33 +269,45 @@ counterfactual supervision을 Thermal-only 후보에 맞게 재사용한다.
 - 두 feature를 동일한 기존 HOFM과 GFL head에 통과시킨다.
 - normal branch가 계산한 assignment cache를 재사용해 target 변화가 utility 비교에
   섞이지 않게 한다.
+- sampled candidate가 association된 P3 support를 `utility_local_mask`로 삼고,
+  이 mask 안의 detector location만 keep/trial loss에 포함한다. mask 밖 classification
+  weight는 0으로, mask 밖 positive label은 background로 바꿔 regression/DFL/centerness
+  positive 집합에서도 제외한다. 최소 한 cell을 보장하고 mask shape이 GFL level shape과
+  다르면 오류를 낸다.
 
 ```text
 u_target = sigmoid((L_det(keep) - L_det(trial)
                     - lambda_penalty * residual_penalty) / T_utility)
 L_utility = BCE(route_prediction, stopgrad(u_target))
-L_trial = lambda_trial * L_det(trial)
 ```
 
 이 비교는 전역 scalar route가 아니라 sampled candidate의 국소 route를 감독한다.
-keep branch는 target 생성과 gradient에서 분리하고, trial branch는 correction 경로로
-gradient를 전달한다. utility sample을 만들지 못한 image/batch에서는 두 loss를 0으로
+keep/trial detection loss는 utility target을 만들 때만 사용하고 모두 stop-gradient한다.
+direct residual은 normal detector loss에서 `soft support -> single gate -> raw_delta`를
+통해 학습한다. utility sample을 만들지 못한 image/batch에서는 utility loss를 0으로
 두되 로그에 sampling failure를 남긴다.
 
 ## 11. Loss 구성
 
-첫 OEPC-v2 실험은 다음 loss만 사용한다.
+첫 OEPC-v2 Final 실험은 다음 loss만 사용한다.
 
 1. 기존 GFL detection loss.
 2. Thermal Gaussian candidate focal loss.
 3. RGB/Thermal foreground supervision. 중심 target과 foreground/bag target을 분리한다.
-4. 신뢰 가능한 context가 있을 때만 적용하는 object-background contrastive loss.
-5. 낮은 가중치의 EDL loss와 EDL uncertainty router input.
-6. 실제 GFL keep/trial detection-utility loss.
+4. 신뢰 가능한 context가 있을 때만 적용하는 local object-background contrastive loss.
+5. candidate-local 실제 GFL keep/trial detection-utility router loss.
 
 RGB/Thermal 전체 feature distribution alignment loss나 동일 객체 hard matching loss는
-추가하지 않는다. auxiliary loss weight는 별도 config에 명시하고 기존 balanced config를
-수정하지 않는다.
+추가하지 않는다. EDL branch, EDL KL, prototype diversity, modality alignment loss도
+제거한다. auxiliary loss weight는 별도 config에 다음과 같이 명시하고 기존 balanced
+config를 수정하지 않는다.
+
+```text
+candidate_loss_weight = 0.10
+foreground_loss_weight = 0.05
+contrastive_loss_weight = 0.02
+utility_loss_weight = 0.05
+```
 
 ## 12. 진단 지표
 
@@ -276,9 +320,10 @@ RGB/Thermal 전체 feature distribution alignment loss나 동일 객체 hard mat
 - GT Gaussian 중심에서의 candidate recall
 - `context_coverage_mean`, `context_available_ratio`
 - local attention entropy와 maximum confidence
-- mean transfer probability와 transfer-on-support
-- `delta_ratio`, residual cap 적용 비율
-- utility sample 비율, keep/trial detection loss, utility target/prediction
+- mean single-route probability와 route-on-support
+- `raw_delta_rms`, `delta_ratio`, residual cap 적용 비율
+- utility local-mask cell/positive 수, sample 비율, keep/trial local detection loss,
+  utility target/prediction
 
 `candidate_count == max_candidates`, context availability 1.0, attention entropy 1.0,
 route가 초기값에 머무는 현상을 조기에 확인할 수 있어야 한다. scalar metric은
@@ -286,17 +331,20 @@ route가 초기값에 머무는 현상을 조기에 확인할 수 있어야 한�
 
 ## 13. 코드 변경 범위
 
+- `mmdet/models/utils/oepc_v2.py`
+  - `ThermalGuidedObjectCalibration`, normalized Gaussian target,
+    detail/context/semantic descriptor, Thermal-only candidate, train/inference support 분리,
+    direct residual과 단일 router 구현.
 - `mmdet/models/utils/oepc.py`
-  - Gaussian target, detail/context/semantic descriptor, Thermal-only candidate,
-    train/inference support 분리, bounded association/calibration 구현.
+  - 기존 balanced OEPC 재현 코드로 유지.
 - `mmdet/models/utils/fusion_strategy.py`
-  - P3 OEPC에 동일 모달 P4 descriptor context 전달.
+  - `use_oepc_v2` 전용 경로와 P3 TOC에 동일 모달 P4 descriptor context 전달.
   - AAM/HOFM의 실제 입력은 calibrated RGB P3와 원 Thermal P3로 유지.
 - `mmdet/models/detectors/fusionnet_xo.py`
-  - 기존 fixed-assignment detector utility 경로를 새 payload와 연결.
+  - `use_oepc_v2`와 기존 fixed-assignment detector utility 경로를 새 payload와 연결.
 - `mmdet/models/dense_heads/gflq_head.py`
-  - 가능한 한 기존 target cache와 sampled loss를 재사용하며 필요한 최소 변경만 한다.
-- `configs/coxnet/oepc/OEPC_v2.py`
+  - 기존 target cache를 재사용하는 candidate-local sampled loss mask를 추가한다.
+- `configs/coxnet/oepc/OEPC_v2_final.py`
   - same-stage FPN, P3-only, detector utility 활성화, 새 hyperparameter 정의.
 - `README.md`와 OEPC 문서
   - 실제 구조, 실행 명령, baseline/ablation 구분을 갱신.
@@ -308,11 +356,13 @@ route가 초기값에 머무는 현상을 조기에 확인할 수 있어야 한�
 ### 14.1 단위 테스트
 
 - 인접한 두 tiny GT의 Gaussian 중심이 모두 보존된다.
+- sub-pixel 중심을 가진 각 객체의 Gaussian maximum이 정확히 1이다.
 - float 중심 이동에 따라 target이 비정상적으로 한 cell에서 사라지지 않는다.
 - training soft support를 통한 loss가 candidate head에 non-zero finite gradient를 준다.
 - inference top-k가 인접한 두 high-score cell을 3x3 NMS로 제거하지 않는다.
 - RGB 입력만 바꿔도 Thermal candidate logits 자체는 변하지 않는다.
 - P4를 바꾸면 descriptor/보정은 변하지만 Thermal 출력 tensor는 변하지 않는다.
+- context foreground weight는 detached되고 foreground auxiliary loss는 head를 학습한다.
 - support 밖 RGB 출력은 입력과 동일하다.
 - residual cap을 넘는 입력에서도 출력 변화가 설정 상한을 넘지 않는다.
 - background context가 부족한 boundary/crowded synthetic case에서 availability가 false가 된다.
@@ -323,7 +373,10 @@ route가 초기값에 머무는 현상을 조기에 확인할 수 있어야 한�
 
 - CPU 작은 tensor로 `FusionLayer` P3/P4 forward/backward가 통과한다.
 - detector utility payload가 실제 GFL sampled loss까지 연결되고 route/trial branch에
-  non-zero finite gradient가 생긴다.
+  finite local keep/trial loss가 생긴다.
+- utility local mask 밖 prediction을 바꿔도 local loss는 변하지 않고, mask 안 prediction을
+  바꾸면 loss가 변한다.
+- EDL/evidence parameter와 `loss_oepc_edl`이 OEPC-v2 Final graph에 존재하지 않는다.
 - training과 `simple_test` 모두 `img_metas` valid mask를 전달한다.
 - config build, one-iteration train smoke test, padded inference smoke test가 통과한다.
 - 기존 balanced config가 여전히 build되어 과거 실험 재현 경로가 깨지지 않는다.
@@ -353,7 +406,8 @@ context availability, route, delta를 함께 본다. Tiny1만 상승하고 Tiny2
 - inference는 인접 peak를 3x3 NMS로 억제하지 않는다.
 - P4는 descriptor에만 들어가고 AAM의 Thermal 입력은 원 Thermal P3다.
 - context availability가 합성 invalid case에서 실제로 false가 된다.
-- actual GFL keep/trial utility가 활성화되고 gradient/finite test를 통과한다.
+- candidate-local actual GFL keep/trial utility가 활성화되고 finite/masking test를 통과한다.
+- FiLM 및 EDL branch가 OEPC-v2 Final active graph에 없다.
 - 단위 테스트, config build, forward/backward, padded inference smoke test가 모두 통과한다.
 - README가 구현과 일치한다.
 - 검증 결과와 남은 한계를 커밋 메시지/보고에 명확히 기록한다.
@@ -400,3 +454,16 @@ P4는 descriptor에서 candidate/association 판단에만 사용한다.
 구현은 단순하지만 여러 후보 중 어느 correction이 유익했는지 분리하지 못한다.
 현재 코드가 이미 제공하는 sampled-candidate actual GFL counterfactual이 국소 router
 감독에 더 적합하므로 이를 유지한다.
+
+### E. EDL uncertainty branch 유지
+
+candidate score, foreground confidence, association confidence/entropy, context reliability,
+modality disagreement, actual detector utility가 이미 존재한다. EDL은 별도 evidence head와
+KL objective를 추가하지만 잘못된 association을 해결하지 않으며 router 설명과 실험
+해석을 복잡하게 만든다. 최종 graph에서는 제거한다.
+
+### F. 기존 `oepc.py`를 직접 교체
+
+파일을 직접 바꾸면 이미 완료한 balanced OEPC config가 같은 이름으로 다른 모델을
+만들어 재현성이 깨진다. 최종 모듈은 `oepc_v2.py`와 `use_oepc_v2`로 분리하고,
+원격 `main`에서는 최종 config/README가 OEPC-v2 Final을 기본 연구 경로로 안내한다.
