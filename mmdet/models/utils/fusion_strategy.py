@@ -7,6 +7,8 @@ from .wavelet_process import DWTC
 from .trpc import (TRPC, ThermalConditionedTRPC, make_padding_mask,
                    build_box_targets, balanced_binary_focal_loss)
 from .oepc import ObjectCentricEvidentialCalibration, build_center_targets
+from .topc import (ThermalAnchoredObjectPrototypeCalibration,
+                   build_topc_gaussian_targets)
 
 
 class FusionLayer(nn.Module):
@@ -31,6 +33,8 @@ class FusionLayer(nn.Module):
             trpc_cfg=None,
             use_oepc=False,
             oepc_cfg=None,
+            use_topc=False,
+            topc_cfg=None,
             usepoolup=['v']):
         super(FusionLayer, self).__init__()
         self.in_channels = in_channels
@@ -49,12 +53,15 @@ class FusionLayer(nn.Module):
         self.usepoolup = usepoolup
         self.use_trpc = use_trpc
         self.use_oepc = use_oepc
-        active_replacements = int(bool(self.use_trpc)) + int(bool(self.use_oepc))
+        self.use_topc = use_topc
+        active_replacements = (
+            int(bool(self.use_trpc)) + int(bool(self.use_oepc)) +
+            int(bool(self.use_topc)))
         if active_replacements > 1:
-            raise ValueError('TRPC and OEPC are mutually exclusive')
+            raise ValueError('TRPC, OEPC, and TOPC are mutually exclusive')
         if active_replacements and len(use_clfm) != 0:
             raise ValueError(
-                'TRPC/OEPC replaces CLFM: set use_clfm=[] when enabled')
+                'TRPC/OEPC/TOPC replaces CLFM: set use_clfm=[] when enabled')
 
         if 'v2' in self.use_clfm:
             self.idwt_layers = nn.ModuleList()
@@ -166,6 +173,28 @@ class FusionLayer(nn.Module):
                         **_oepc_cfg))
             torch.set_rng_state(cpu_rng_state)
 
+        _topc_cfg = dict(topc_cfg or {})
+        self.topc_levels = tuple(int(level) for level in _topc_cfg.pop(
+            'apply_levels', (0,)))
+        if any(level < 0 or level >= num_layers for level in self.topc_levels):
+            raise ValueError('TOPC apply_levels contains an invalid level')
+        self.topc_objectness_loss_weight = float(
+            _topc_cfg.pop('objectness_loss_weight', 0.1))
+        self.topc_focal_gamma = float(_topc_cfg.pop('focal_gamma', 2.0))
+        self.last_topc_aux = None
+        if self.use_topc:
+            self.topc_layers = nn.ModuleDict()
+            # Follow the experiment seed while preserving the HOFM control's
+            # CPU initialization stream, exactly as the same-stage OEPC path.
+            cpu_rng_state = torch.get_rng_state()
+            for level in self.topc_levels:
+                self.topc_layers[str(level)] = (
+                    ThermalAnchoredObjectPrototypeCalibration(
+                        channels=in_channels,
+                        focal_gamma=self.topc_focal_gamma,
+                        **_topc_cfg))
+            torch.set_rng_state(cpu_rng_state)
+
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
         elif fs_type == 'add':
@@ -206,6 +235,7 @@ class FusionLayer(nn.Module):
         fused_feats = []
         trpc_aux = {}
         oepc_aux = {}
+        topc_aux = {}
         oepc_utility_payload = None
         for i in range(self.num_layers):
             v_feat = v_feats[i]
@@ -258,6 +288,32 @@ class FusionLayer(nn.Module):
                             foreground_target=foreground_target,
                             return_aux=True)
                         oepc_aux[i] = aux_i
+                elif self.use_topc:
+                    if v_feat.shape != t_feat.shape:
+                        raise ValueError(
+                            'TOPC is a same-stage CLFM replacement and '
+                            'requires equal RGB/Thermal feature shapes, got '
+                            f'{tuple(v_feat.shape)} and {tuple(t_feat.shape)} '
+                            f'at level {i}')
+                    if i in self.topc_levels:
+                        shapes, padded = self._trpc_geometry(img_metas)
+                        valid_mask = None if shapes is None else make_padding_mask(
+                            shapes, padded, t_feat.shape[-2:], t_feat.device)
+                        center_target = None
+                        if (self.training and gt_bboxes is not None and
+                                shapes is not None):
+                            if gt_bboxes_ignore is not None:
+                                _, valid_mask = build_box_targets(
+                                    gt_bboxes, shapes, padded,
+                                    t_feat.shape[-2:], t_feat.device,
+                                    ignore_boxes=gt_bboxes_ignore)
+                            center_target = build_topc_gaussian_targets(
+                                gt_bboxes, padded, t_feat.shape[-2:],
+                                t_feat.device, valid_mask=valid_mask)
+                        v_feat, aux_i = self.topc_layers[str(i)](
+                            v_feat, t_feat, valid_mask=valid_mask,
+                            center_target=center_target, return_aux=True)
+                        topc_aux[i] = aux_i
                 elif len(self.use_clfm) != 0:
                     if 'v' == self.use_clfm[0]:
                         v_feat = F.interpolate(v_feat, size=t_feat.shape[2:], mode='bilinear', align_corners=True)
@@ -296,6 +352,11 @@ class FusionLayer(nn.Module):
                 i: {key: (value.detach() if torch.is_tensor(value) else value)
                     for key, value in aux.items()}
                 for i, aux in oepc_aux.items()}
+        if not self.training and topc_aux:
+            self.last_topc_aux = {
+                i: {key: (value.detach() if torch.is_tensor(value) else value)
+                    for key, value in aux.items()}
+                for i, aux in topc_aux.items()}
 
         if self.training:
             aux_losses = {}
@@ -382,6 +443,28 @@ class FusionLayer(nn.Module):
                     if values and weight > 0:
                         aux_losses[destination] = (
                             weight * sum(values) / len(values))
+
+            if self.use_topc and topc_aux:
+                monitor_keys = (
+                    'candidate_count', 'candidate_mean',
+                    'matching_confidence_mean', 'support_ratio',
+                    'delta_ratio')
+                for key in monitor_keys:
+                    values = [aux[key] for aux in topc_aux.values()
+                              if key in aux]
+                    if values:
+                        aux_losses['topc_' + key] = sum(values) / len(values)
+                first = min(topc_aux)
+                for key in monitor_keys:
+                    if key in topc_aux[first]:
+                        aux_losses[f'topc_l{first}_{key}'] = (
+                            topc_aux[first][key])
+                if self.topc_objectness_loss_weight > 0:
+                    objectness = [aux['objectness_loss']
+                                  for aux in topc_aux.values()]
+                    aux_losses['loss_topc_objectness'] = (
+                        self.topc_objectness_loss_weight *
+                        sum(objectness) / len(objectness))
 
             if self.wf_loss:
                 if self.wf_loss_mode == 'kl_v1':

@@ -1,5 +1,8 @@
 import torch
+import torch.nn as nn
+from mmcv import Config
 
+from mmdet.models.utils.fusion_strategy import FusionLayer
 from mmdet.models.utils.topc import (
     ThermalAnchoredObjectPrototypeCalibration,
     build_topc_gaussian_targets,
@@ -321,3 +324,99 @@ def test_topc_forward_validates_targets_and_masks():
         assert 'center_target' in str(error)
     else:
         raise AssertionError('TOPC accepted a mismatched center target')
+
+
+class _CaptureFusion(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.thermal_inputs = []
+
+    def forward(self, rgb, thermal):
+        self.thermal_inputs.append(thermal.detach().clone())
+        return rgb + thermal
+
+
+def test_topc_fusion_layer_is_p3_only_preserves_thermal_and_weights_loss():
+    torch.manual_seed(23)
+    layer = FusionLayer(
+        in_channels=8, reduction=4, num_layers=2,
+        fs_type='fusionnet-xo', use_clfm=[], use_trpc=False,
+        use_oepc=False, use_topc=True,
+        topc_cfg=dict(
+            apply_levels=(0,), calibration_dim=4, object_kernel=3,
+            search_radius=1, candidate_threshold=0.0, max_candidates=2,
+            objectness_loss_weight=0.1),
+        usepoolup=[])
+    captures = nn.ModuleList([_CaptureFusion(), _CaptureFusion()])
+    layer.hofm_layers = captures
+    observed = {}
+    handle = layer.topc_layers['0'].register_forward_hook(
+        lambda _module, _inputs, output: observed.update(output[1]))
+    layer.train()
+    visible = [torch.randn(1, 8, 4, 5), torch.randn(1, 8, 2, 3)]
+    thermal = [torch.randn_like(visible[0]), torch.randn_like(visible[1])]
+    thermal_before = [feature.clone() for feature in thermal]
+    boxes = [torch.tensor([[8.0, 8.0, 16.0, 16.0]])]
+    metas = [dict(
+        img_shape=(24, 32, 3), pad_shape=(32, 40, 3),
+        batch_input_shape=(32, 40))]
+
+    features, aux = layer(
+        visible, thermal, gt_bboxes=boxes, img_metas=metas)
+    handle.remove()
+
+    assert len(features) == 2
+    assert set(layer.topc_layers.keys()) == {'0'}
+    assert not hasattr(layer, 'idwt_layers')
+    assert not hasattr(layer, 'trpc_layers')
+    assert not hasattr(layer, 'oepc_layers')
+    assert torch.equal(captures[0].thermal_inputs[0], thermal_before[0])
+    assert torch.equal(captures[1].thermal_inputs[0], thermal_before[1])
+    assert torch.equal(thermal[0], thermal_before[0])
+    assert torch.count_nonzero(observed['spatial_support'][:, :, 3]).item() == 0
+    assert torch.count_nonzero(observed['spatial_support'][:, :, :, 4]).item() == 0
+    assert torch.allclose(
+        aux['loss_topc_objectness'], 0.1 * observed['objectness_loss'])
+    assert 'topc_candidate_count' in aux
+    assert not any('utility' in key for key in aux)
+
+
+def test_topc_replacement_is_mutually_exclusive_with_legacy_fusion_paths():
+    common = dict(
+        in_channels=8, reduction=4, num_layers=1,
+        fs_type='fusionnet-xo', usepoolup=[])
+    for conflicting in (
+            dict(use_topc=True, use_trpc=True, use_clfm=[]),
+            dict(use_topc=True, use_oepc=True, use_clfm=[]),
+            dict(use_topc=True, use_clfm=['v3'])):
+        try:
+            FusionLayer(**common, **conflicting)
+        except ValueError as error:
+            assert 'mutually exclusive' in str(error) or 'replaces CLFM' in str(error)
+        else:
+            raise AssertionError('TOPC accepted a conflicting replacement')
+
+
+def test_topc_canonical_config_contract():
+    config = Config.fromfile('configs/coxnet/topc/TOPC.py')
+    model = config.model
+
+    assert model.neck.start_level == 1
+    assert model.neck_t.start_level == 1
+    assert model.use_clfm == []
+    assert model.use_trpc is False
+    assert model.use_oepc is False
+    assert model.use_topc is True
+    assert model.wf_loss is False
+    expected = dict(
+        apply_levels=(0,), calibration_dim=64, object_kernel=3,
+        search_radius=2, search_temperature=0.2,
+        candidate_prior=0.01, candidate_threshold=0.05,
+        max_candidates=100, residual_init_std=1e-2,
+        objectness_loss_weight=0.1)
+    for key, value in expected.items():
+        assert model.topc_cfg[key] == value
+    assert not any(
+        forbidden in model.topc_cfg
+        for forbidden in ('p4', 'utility', 'edl', 'gate', 'film'))
+    assert config.work_dir.endswith('/topc/seed0')
