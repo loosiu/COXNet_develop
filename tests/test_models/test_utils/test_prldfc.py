@@ -1,7 +1,10 @@
 import math
 
 import torch
+import torch.nn as nn
+from mmcv import Config
 
+from mmdet.models.utils.fusion_strategy import FusionLayer
 from mmdet.models.utils.prldfc import (
     DynamicFrequencyBank,
     PRLDFCSeedHead,
@@ -278,3 +281,188 @@ def test_prldfc_calibration_rejects_mismatched_modalities_and_masks():
         assert 'valid_mask' in str(error)
     else:
         raise AssertionError('PRLDFC accepted an inconsistent valid mask')
+
+
+class _CaptureFusion(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.rgb_inputs = []
+        self.thermal_inputs = []
+
+    def forward(self, rgb, thermal):
+        self.rgb_inputs.append(rgb.detach().clone())
+        self.thermal_inputs.append(thermal.detach().clone())
+        return rgb + thermal
+
+
+def _fusion_layer(**overrides):
+    arguments = dict(
+        in_channels=8,
+        reduction=4,
+        num_layers=3,
+        fs_type='fusionnet-xo',
+        use_clfm=[],
+        use_trpc=False,
+        use_oepc=False,
+        use_topc=False,
+        use_prldfc=True,
+        prldfc_cfg=dict(
+            apply_levels=(0, 1),
+            frequency_dim=4,
+            prototype_dim=4,
+            num_bands=3,
+            search_radius=(1, 1),
+            seed_prior=0.05,
+            seed_threshold=0.1,
+            seed_temperature=0.5,
+            frequency_temperature=0.02,
+            min_band_width=0.05,
+            level_scale_ranges=((0, 32), (16, 64)),
+            residual_epsilon=(0.1, 0.1),
+            seed_loss_weight=0.1,
+            offset_loss_weight=0.05,
+            scale_loss_weight=0.02,
+            cardinality_loss_weight=0.01),
+        wf_loss=False,
+        usepoolup=[])
+    arguments.update(overrides)
+    return FusionLayer(**arguments)
+
+
+def test_prldfc_fusion_layer_applies_p3_p4_and_preserves_thermal():
+    torch.manual_seed(47)
+    layer = _fusion_layer()
+    captures = nn.ModuleList(
+        [_CaptureFusion(), _CaptureFusion(), _CaptureFusion()])
+    layer.hofm_layers = captures
+    observed = {}
+    handles = [
+        layer.prldfc_layers[str(level)].register_forward_hook(
+            lambda _module, _inputs, output, level=level:
+            observed.update({level: output[1]}))
+        for level in (0, 1)]
+    layer.train()
+    visible = [
+        torch.randn(1, 8, 5, 6),
+        torch.randn(1, 8, 3, 4),
+        torch.randn(1, 8, 2, 3)]
+    thermal = [torch.randn_like(feature) for feature in visible]
+    thermal_before = [feature.clone() for feature in thermal]
+    boxes = [torch.tensor([[8.0, 8.0, 24.0, 24.0]])]
+    metas = [dict(
+        img_shape=(32, 40, 3), pad_shape=(40, 48, 3),
+        batch_input_shape=(40, 48))]
+
+    features, aux = layer(
+        visible, thermal, gt_bboxes=boxes, img_metas=metas)
+    for handle in handles:
+        handle.remove()
+
+    assert len(features) == 3
+    assert set(layer.prldfc_layers.keys()) == {'0', '1'}
+    assert not hasattr(layer, 'idwt_layers')
+    assert not hasattr(layer, 'trpc_layers')
+    assert not hasattr(layer, 'oepc_layers')
+    assert not hasattr(layer, 'topc_layers')
+    for level in range(3):
+        assert torch.equal(captures[level].thermal_inputs[0], thermal_before[level])
+        assert torch.equal(thermal[level], thermal_before[level])
+    assert torch.allclose(
+        aux['loss_prldfc_seed'],
+        0.1 * sum(item['seed_loss'] for item in observed.values()) / 2)
+    assert torch.allclose(
+        aux['loss_prldfc_offset'],
+        0.05 * sum(item['offset_loss'] for item in observed.values()) / 2)
+    assert 'prldfc_band_weight_low' in aux
+    assert 'prldfc_delta_ratio' in aux
+    assert torch.count_nonzero(
+        observed[0]['spatial_support'][:, :, -1]).item() == 0
+    assert torch.count_nonzero(
+        observed[0]['spatial_support'][:, :, :, -1]).item() == 0
+
+
+def test_prldfc_fusion_layer_inference_records_detached_diagnostics():
+    layer = _fusion_layer()
+    layer.hofm_layers = nn.ModuleList(
+        [_CaptureFusion(), _CaptureFusion(), _CaptureFusion()])
+    layer.eval()
+    visible = [
+        torch.randn(1, 8, 4, 5),
+        torch.randn(1, 8, 2, 3),
+        torch.randn(1, 8, 1, 2)]
+    thermal = [torch.randn_like(feature) for feature in visible]
+    metas = [dict(
+        img_shape=(24, 32, 3), pad_shape=(32, 40, 3),
+        batch_input_shape=(32, 40))]
+
+    outputs = layer(visible, thermal, img_metas=metas)
+
+    assert len(outputs) == 3
+    assert set(layer.last_prldfc_aux) == {0, 1}
+    assert not layer.last_prldfc_aux[0]['delta_ratio'].requires_grad
+
+
+def test_prldfc_replacement_is_mutually_exclusive_and_requires_same_shape():
+    conflicts = (
+        dict(use_clfm=['v3']),
+        dict(use_trpc=True),
+        dict(use_oepc=True),
+        dict(use_topc=True),
+    )
+    for conflicting in conflicts:
+        try:
+            _fusion_layer(**conflicting)
+        except ValueError as error:
+            assert 'mutually exclusive' in str(error) or 'replaces CLFM' in str(error)
+        else:
+            raise AssertionError('PRLDFC accepted a conflicting fusion path')
+
+    layer = _fusion_layer()
+    visible = [
+        torch.randn(1, 8, 4, 5),
+        torch.randn(1, 8, 2, 3),
+        torch.randn(1, 8, 1, 2)]
+    thermal = [
+        torch.randn(1, 8, 3, 5),
+        torch.randn_like(visible[1]),
+        torch.randn_like(visible[2])]
+    try:
+        layer(visible, thermal)
+    except ValueError as error:
+        assert 'same-stage' in str(error)
+    else:
+        raise AssertionError('PRLDFC accepted unequal same-stage features')
+
+
+def test_inactive_prldfc_does_not_constrain_legacy_layer_count():
+    layer = FusionLayer(
+        in_channels=8, num_layers=1, fs_type='add',
+        use_prldfc=False, usepoolup=[])
+
+    assert layer.num_layers == 1
+    assert not hasattr(layer, 'prldfc_layers')
+
+
+def test_prldfc_canonical_and_control_config_contracts():
+    canonical = Config.fromfile('configs/coxnet/prldfc/PRLDFC.py').model
+    p3_only = Config.fromfile('configs/coxnet/prldfc/PRLDFC_p3.py').model
+    control = Config.fromfile(
+        'configs/coxnet/prldfc/same_stage_no_calibration.py').model
+
+    assert canonical.neck.start_level == 1
+    assert canonical.neck_t.start_level == 1
+    assert canonical.use_clfm == []
+    assert canonical.use_prldfc is True
+    assert canonical.wf_loss is True
+    assert canonical.wf_loss_mode == 'kl_v2'
+    assert canonical.wf_loss_weight == 0.1
+    assert canonical.prldfc_cfg.apply_levels == (0, 1)
+    assert canonical.prldfc_cfg.level_scale_ranges == ((0, 32), (16, 64))
+    assert canonical.prldfc_cfg.search_radius == (2, 2)
+    assert canonical.prldfc_cfg.residual_epsilon == (0.1, 0.1)
+    assert p3_only.prldfc_cfg.apply_levels == (0,)
+    assert p3_only.prldfc_cfg.level_scale_ranges == ((0, 32),)
+    assert control.use_prldfc is False
+    assert control.use_clfm == []
+    assert control.neck.start_level == control.neck_t.start_level == 1

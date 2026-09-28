@@ -9,6 +9,7 @@ from .trpc import (TRPC, ThermalConditionedTRPC, make_padding_mask,
 from .oepc import ObjectCentricEvidentialCalibration, build_center_targets
 from .topc import (ThermalAnchoredObjectPrototypeCalibration,
                    build_topc_gaussian_targets)
+from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
 
 
 class FusionLayer(nn.Module):
@@ -35,6 +36,8 @@ class FusionLayer(nn.Module):
             oepc_cfg=None,
             use_topc=False,
             topc_cfg=None,
+            use_prldfc=False,
+            prldfc_cfg=None,
             usepoolup=['v']):
         super(FusionLayer, self).__init__()
         self.in_channels = in_channels
@@ -54,14 +57,17 @@ class FusionLayer(nn.Module):
         self.use_trpc = use_trpc
         self.use_oepc = use_oepc
         self.use_topc = use_topc
+        self.use_prldfc = use_prldfc
         active_replacements = (
             int(bool(self.use_trpc)) + int(bool(self.use_oepc)) +
-            int(bool(self.use_topc)))
+            int(bool(self.use_topc)) + int(bool(self.use_prldfc)))
         if active_replacements > 1:
-            raise ValueError('TRPC, OEPC, and TOPC are mutually exclusive')
+            raise ValueError(
+                'TRPC, OEPC, TOPC, and PRLDFC are mutually exclusive')
         if active_replacements and len(use_clfm) != 0:
             raise ValueError(
-                'TRPC/OEPC/TOPC replaces CLFM: set use_clfm=[] when enabled')
+                'TRPC/OEPC/TOPC/PRLDFC replaces CLFM: set use_clfm=[] '
+                'when enabled')
 
         if 'v2' in self.use_clfm:
             self.idwt_layers = nn.ModuleList()
@@ -195,6 +201,53 @@ class FusionLayer(nn.Module):
                         **_topc_cfg))
             torch.set_rng_state(cpu_rng_state)
 
+        self.prldfc_levels = ()
+        self.last_prldfc_aux = None
+        if self.use_prldfc:
+            _prldfc_cfg = dict(prldfc_cfg or {})
+            self.prldfc_levels = tuple(
+                int(level) for level in _prldfc_cfg.pop(
+                    'apply_levels', (0, 1)))
+            if any(level < 0 or level >= num_layers
+                   for level in self.prldfc_levels):
+                raise ValueError(
+                    'PRLDFC apply_levels contains an invalid level')
+            self.prldfc_seed_loss_weight = float(
+                _prldfc_cfg.pop('seed_loss_weight', 0.1))
+            self.prldfc_offset_loss_weight = float(
+                _prldfc_cfg.pop('offset_loss_weight', 0.05))
+            self.prldfc_scale_loss_weight = float(
+                _prldfc_cfg.pop('scale_loss_weight', 0.02))
+            self.prldfc_cardinality_loss_weight = float(
+                _prldfc_cfg.pop('cardinality_loss_weight', 0.01))
+            scale_ranges = tuple(
+                tuple(value) for value in _prldfc_cfg.pop(
+                    'level_scale_ranges', ((0, 32), (16, 64))))
+            search_radii = _prldfc_cfg.pop('search_radius', 2)
+            residual_epsilons = _prldfc_cfg.pop('residual_epsilon', 0.1)
+            if not isinstance(search_radii, (tuple, list)):
+                search_radii = (search_radii,) * len(self.prldfc_levels)
+            if not isinstance(residual_epsilons, (tuple, list)):
+                residual_epsilons = (
+                    residual_epsilons,) * len(self.prldfc_levels)
+            if not (len(scale_ranges) == len(search_radii) ==
+                    len(residual_epsilons) == len(self.prldfc_levels)):
+                raise ValueError(
+                    'PRLDFC per-level settings must match apply_levels')
+            self.prldfc_level_scale_ranges = {
+                level: scale_ranges[index]
+                for index, level in enumerate(self.prldfc_levels)}
+            self.prldfc_layers = nn.ModuleDict()
+            cpu_rng_state = torch.get_rng_state()
+            for index, level in enumerate(self.prldfc_levels):
+                self.prldfc_layers[str(level)] = (
+                    PrototypeRoutedLocalDynamicFrequencyCalibration(
+                        channels=in_channels,
+                        search_radius=int(search_radii[index]),
+                        residual_epsilon=float(residual_epsilons[index]),
+                        **_prldfc_cfg))
+            torch.set_rng_state(cpu_rng_state)
+
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
         elif fs_type == 'add':
@@ -236,6 +289,7 @@ class FusionLayer(nn.Module):
         trpc_aux = {}
         oepc_aux = {}
         topc_aux = {}
+        prldfc_aux = {}
         oepc_utility_payload = None
         for i in range(self.num_layers):
             v_feat = v_feats[i]
@@ -314,6 +368,32 @@ class FusionLayer(nn.Module):
                             v_feat, t_feat, valid_mask=valid_mask,
                             center_target=center_target, return_aux=True)
                         topc_aux[i] = aux_i
+                elif self.use_prldfc:
+                    if v_feat.shape != t_feat.shape:
+                        raise ValueError(
+                            'PRLDFC is a same-stage CLFM replacement and '
+                            'requires equal RGB/Thermal feature shapes, got '
+                            f'{tuple(v_feat.shape)} and {tuple(t_feat.shape)} '
+                            f'at level {i}')
+                    if i in self.prldfc_levels:
+                        shapes, padded = self._trpc_geometry(img_metas)
+                        valid_mask = None if shapes is None else make_padding_mask(
+                            shapes, padded, t_feat.shape[-2:], t_feat.device)
+                        if (self.training and gt_bboxes_ignore is not None and
+                                shapes is not None):
+                            _, valid_mask = build_box_targets(
+                                gt_bboxes, shapes, padded,
+                                t_feat.shape[-2:], t_feat.device,
+                                ignore_boxes=gt_bboxes_ignore)
+                        level_boxes = gt_bboxes if self.training else None
+                        v_feat, aux_i = self.prldfc_layers[str(i)](
+                            v_feat, t_feat, valid_mask=valid_mask,
+                            gt_bboxes=level_boxes,
+                            padded_size=padded if self.training else None,
+                            level_scale_range=(
+                                self.prldfc_level_scale_ranges[i]),
+                            return_aux=True)
+                        prldfc_aux[i] = aux_i
                 elif len(self.use_clfm) != 0:
                     if 'v' == self.use_clfm[0]:
                         v_feat = F.interpolate(v_feat, size=t_feat.shape[2:], mode='bilinear', align_corners=True)
@@ -357,6 +437,11 @@ class FusionLayer(nn.Module):
                 i: {key: (value.detach() if torch.is_tensor(value) else value)
                     for key, value in aux.items()}
                 for i, aux in topc_aux.items()}
+        if not self.training and prldfc_aux:
+            self.last_prldfc_aux = {
+                i: {key: (value.detach() if torch.is_tensor(value) else value)
+                    for key, value in aux.items()}
+                for i, aux in prldfc_aux.items()}
 
         if self.training:
             aux_losses = {}
@@ -465,6 +550,49 @@ class FusionLayer(nn.Module):
                     aux_losses['loss_topc_objectness'] = (
                         self.topc_objectness_loss_weight *
                         sum(objectness) / len(objectness))
+
+            if self.use_prldfc and prldfc_aux:
+                monitor_keys = (
+                    'seed_mass', 'threshold_candidate_count',
+                    'broadband_attention_entropy',
+                    'band_attention_entropy', 'support_ratio',
+                    'overlap_mass', 'raw_residual_rms', 'delta_ratio',
+                    'residual_cap_fraction', 'eligible_gt_count',
+                    'unassigned_gt_count')
+                for key in monitor_keys:
+                    values = [aux[key] for aux in prldfc_aux.values()
+                              if key in aux]
+                    if values:
+                        aux_losses['prldfc_' + key] = (
+                            sum(values) / len(values)).detach()
+                band_names = ('low', 'mid', 'high')
+                for band_index in range(3):
+                    values = [
+                        aux['band_weights'][:, band_index].mean()
+                        for aux in prldfc_aux.values()
+                        if aux['band_weights'].shape[1] > band_index]
+                    if values:
+                        aux_losses['prldfc_band_weight_' +
+                                   band_names[band_index]] = (
+                                       sum(values) / len(values)).detach()
+                reliability = [
+                    aux['reliability'].mean()
+                    for aux in prldfc_aux.values()]
+                aux_losses['prldfc_reliability'] = (
+                    sum(reliability) / len(reliability)).detach()
+                loss_specs = (
+                    ('seed_loss', 'loss_prldfc_seed',
+                     self.prldfc_seed_loss_weight),
+                    ('offset_loss', 'loss_prldfc_offset',
+                     self.prldfc_offset_loss_weight),
+                    ('scale_loss', 'loss_prldfc_scale',
+                     self.prldfc_scale_loss_weight),
+                    ('cardinality_loss', 'loss_prldfc_cardinality',
+                     self.prldfc_cardinality_loss_weight))
+                for source, destination, weight in loss_specs:
+                    values = [aux[source] for aux in prldfc_aux.values()]
+                    aux_losses[destination] = (
+                        weight * sum(values) / len(values))
 
             if self.wf_loss:
                 if self.wf_loss_mode == 'kl_v1':

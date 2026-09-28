@@ -5,9 +5,11 @@ from .fusion_layer_coxnet import COXFusionLayer
 from .trpc import TRPC, ThermalConditionedTRPC
 from .oepc import ObjectCentricEvidentialCalibration
 from .topc import ThermalAnchoredObjectPrototypeCalibration
+from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
 
 __all__ = [
     'ResLayer', 'SimplifiedBasicBlock', 'FusionLayer', 'COXFusionLayer', 'TRPC',
     'ThermalConditionedTRPC', 'ObjectCentricEvidentialCalibration',
-    'ThermalAnchoredObjectPrototypeCalibration'
+    'ThermalAnchoredObjectPrototypeCalibration',
+    'PrototypeRoutedLocalDynamicFrequencyCalibration'
 ]

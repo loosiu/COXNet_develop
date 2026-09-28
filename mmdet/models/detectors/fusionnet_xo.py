@@ -41,6 +41,8 @@ class FusionNetXO(SingleStageDetector):
                  oepc_cfg=None,
                  use_topc=False,
                  topc_cfg=None,
+                 use_prldfc=False,
+                 prldfc_cfg=None,
                 #  usepoolup=['v'],
                  usepoolup=[],
                  train_cfg=None,
@@ -54,6 +56,7 @@ class FusionNetXO(SingleStageDetector):
         self.use_trpc = use_trpc
         self.use_oepc = use_oepc
         self.use_topc = use_topc
+        self.use_prldfc = use_prldfc
         if neck_t is not None:
             self.neck_t = build_neck(neck_t)
         else:
@@ -81,6 +84,8 @@ class FusionNetXO(SingleStageDetector):
             oepc_cfg=oepc_cfg,
             use_topc=use_topc,
             topc_cfg=topc_cfg,
+            use_prldfc=use_prldfc,
+            prldfc_cfg=prldfc_cfg,
             usepoolup=usepoolup)
         
         # self.iter = -1
