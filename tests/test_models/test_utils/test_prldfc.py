@@ -335,6 +335,26 @@ def test_prldfc_training_losses_and_detection_path_receive_gradients():
     assert aux['unassigned_gt_count'].item() == 0.0
 
 
+def test_prldfc_active_seed_initialization_trains_routing_paths():
+    """An active seed must not leave the calibration routers starved."""
+    torch.manual_seed(45)
+    module = _calibrator(seed_prior=0.2, seed_temperature=0.25)
+    module.train()
+    rgb = torch.randn(2, 8, 9, 11)
+    thermal = torch.randn_like(rgb)
+    valid = torch.ones(2, 1, 9, 11, dtype=torch.bool)
+    valid[:, :, -1] = False
+    valid[:, :, :, -1] = False
+
+    output, aux = module(
+        rgb, thermal, valid_mask=valid, return_aux=True)
+    output.square().mean().backward()
+
+    assert aux['delta_ratio'].item() > 1e-4
+    assert module.band_router[-1].weight.grad.norm().item() > 1e-6
+    assert module.reliability_router[-1].weight.grad.norm().item() > 1e-6
+
+
 def test_prldfc_calibration_rejects_mismatched_modalities_and_masks():
     module = _calibrator()
     rgb = torch.randn(1, 8, 4, 5)

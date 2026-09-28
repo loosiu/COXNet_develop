@@ -80,6 +80,25 @@ delta = epsilon * (1 - exp(-mass)) * tanh(weighted_average)
 Therefore each output channel is bounded by `residual_epsilon` and invalid
 padding receives exactly zero correction.
 
+### Initialization and learning path
+
+The residual projection uses standard Kaiming-scale weights with a zero bias.
+Iteration-zero safety comes from the low Thermal seed prior, the soft support,
+`tanh`, and the explicit `residual_epsilon` bound; the residual projection is
+not independently shrunk toward zero.
+
+This distinction is important. Initializing the projection with
+`std=1e-3` made the dense residual about `1e-4`. Multiplying it by the observed
+support mass and `residual_epsilon` reduced the RGB correction to about `1e-7`,
+so detector gradients reaching the band and reliability routers were only
+about `1e-8`. The standard-scale projection preserves the same spatial mask
+and correction bound while giving those routers a usable learning signal.
+
+During training, `threshold_candidate_count` and `support_ratio` verify seed
+activation, while `delta_ratio`, non-uniform band weights, and reliability
+movement verify that activation reaches the RGB calibration path. Seed
+activation alone is not evidence that PRLDFC is contributing to detection.
+
 ## Losses
 
 The canonical experiment uses:

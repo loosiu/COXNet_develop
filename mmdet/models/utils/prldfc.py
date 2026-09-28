@@ -262,7 +262,10 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
                     3 * self.frequency_dim, self.frequency_dim, 1),
                 nn.GELU(),
                 nn.Conv2d(self.frequency_dim, self.channels, 1))
-            nn.init.normal_(residual[-1].weight, mean=0.0, std=1e-3)
+            # The seed gate and residual_epsilon already bound iteration-zero
+            # corrections. Keep a standard-scale actuator so detection
+            # gradients can reach the band and reliability routers.
+            nn.init.kaiming_uniform_(residual[-1].weight, a=math.sqrt(5))
             nn.init.zeros_(residual[-1].bias)
             self.residual_mlps.append(residual)
 
