@@ -14,61 +14,50 @@ COXNet is an RGBT tiny object detection framework that jointly addresses cross-m
 
 This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
-The current controlled method is **TOPC (Thermal-Anchored Object Prototype
-Calibration)**. RGB and Thermal FPNs both start at level 1 and produce
-equal-stride P3/P4/P5/P6 features. TOPC acts only on P3: a Thermal objectness
-head selects object anchors, a shared RGB/Thermal projection defines one
-calibration space, and each Thermal prototype searches a radius-2 RGB
-neighborhood. The projected Thermal-minus-RGB discrepancy calibrates RGB only;
-the original Thermal feature is passed unchanged to AAM/HOFM.
+The current experimental method is **PRLDFC (Prototype-Routed Local Dynamic
+Frequency Calibration)**. RGB and Thermal FPNs both start at level 1 and
+produce equal-stride P3/P4/P5/P6 features. Dense Thermal P3/P4 seeds condition
+object-specific low/mid/high-frequency routing and Thermal reliability. Dense
+band features provide the correction content; prototypes only route it. The
+bounded residual calibrates RGB while Thermal is passed unchanged to AAM/HOFM.
 
-TOPC contains no cross-stage pairing, transposed convolution, DWT/IDWT,
-frequency fusion, learned router, EDL, FiLM, contrastive loss, or P4 semantic
-branch. P4-P6 go directly to their same-stage AAM/HOFM blocks. Legacy OEPC and
-TRPC implementations remain available for controlled comparisons and
-reproducibility. See [the TOPC method note](docs/TOPC.md),
-[docs/TRPC.md](docs/TRPC.md), and
-[the same-stage TRPC diagnosis](docs/trpc_same_stage_analysis_ko.md).
+PRLDFC contains no cross-stage pairing, DeConv, DWT/IDWT, hard top-k candidate
+quota, peak NMS, EDL, contrastive loss, detector utility router, or feature
+warp. P5/P6 go directly to same-stage AAM/HOFM. Legacy TOPC, OEPC, and TRPC
+remain available for controlled comparisons and reproducibility. See
+[the PRLDFC method note](docs/PRLDFC.md),
+[the design](docs/superpowers/specs/2026-09-28-prldfc-design.md),
+[the implementation plan](docs/superpowers/plans/2026-09-28-prldfc-implementation.md),
+and [the TOPC method note](docs/TOPC.md).
 
-### TOPC data flow
+### PRLDFC data flow
 
 ```text
-Thermal P3 ── objectness ── candidate-specific 3x3 prototype ───────────┐
-                         shared 1x1 projection space                    │
-RGB P3 ───────────────── radius-2 local semantic search ────────────────┤
-                                                                       ↓
-                     W(Thermal prototype - matched RGB prototype)
-                                  ↓ attention/confidence support
-RGB P3 ─────────────────────────── + ─────────────────────── RGB_cal P3 ─┐
-                                                                         ├─ AAM/HOFM
-Thermal P3 (unchanged) ──────────────────────────────────────────────────┘
+Thermal P3/P4 ─ dense one-to-one seed ─ detail prototype ─ band router ─┐
+RGB/T P3/P4 ─ learnable low/mid/high bands ─ local association ─────────┤
+                                                                        ↓
+                                         normalized bounded RGB residual
+RGB P3/P4 ───────────────────────────────── + ───────── RGB_cal P3/P4 ─┐
+Thermal P3/P4 (unchanged) ──────────────────────────────────────────────┴─ AAM/HOFM
 ```
 
-The candidate decision is Thermal-first and uses threshold plus top-k without
-local-peak NMS, so adjacent P3 cells are not suppressed. Matching is a full
-softmax over the local RGB window and does not warp either modality. Maximum
-attention is the only reliability coefficient. Candidate residuals retain
-their attention magnitude, while overlapping residuals are mass-normalized to
-avoid unbounded amplification. RGB is exactly preserved outside the selected
-support and whenever no candidate survives.
-
-Thermal-coordinate GT centers supervise a normalized Gaussian objectness map.
-The only added objective is `0.1 * loss_topc_objectness`; detection loss trains
-the shared projection, matching, and discrepancy residual. The inherited
-fused-to-Thermal feature loss is disabled.
+Training uses dense differentiable seed support rather than a fixed candidate
+count. Deterministic Hungarian matching provides one-to-one seed supervision.
+Local attention selects RGB neighborhoods without warping either modality or
+multiplying maximum attention as another confidence term. Overlapping supports
+are mass-normalized, and each correction channel is bounded by epsilon.
 
 ---
 
 ## Main Results
 
-### TOPC status
+### PRLDFC status
 
-TOPC has passed config construction, same-stage shape checks, CPU
-forward/backward, padding exclusion, Thermal-input preservation, adjacent
-candidate, overlap-normalization, empty-candidate identity, and non-zero
-gradient checks. Its three-seed result is not yet available; structural
-validation must not be read as an AP improvement. Runtime, complete-model cost,
-and FPS must still be measured on the target GPU.
+PRLDFC has focused tests for one-to-one seed assignment, learnable frequency
+partition/reconstruction, padding exclusion, Thermal preservation, bounded
+overlap aggregation, non-zero gradients, FusionLayer integration, and config
+contracts. Its training and AP comparison have not been completed. Structural
+validation must not be read as an AP improvement.
 
 ### Initial cross-stage TRPC three-seed result
 
@@ -202,6 +191,17 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
+**PRLDFC complete CLFM replacement, canonical P3/P4 treatment (seed 0)**
+
+```bash
+python tools/train.py configs/coxnet/prldfc/PRLDFC.py \
+    --seed 0 --deterministic
+```
+
+Use `configs/coxnet/prldfc/PRLDFC_p3.py` for the P3-only level ablation and
+`configs/coxnet/prldfc/same_stage_no_calibration.py` for the matched same-stage
+control. Compare these at seed 0 before launching additional seeds.
+
 **TOPC complete CLFM replacement, single GPU (seed 0)**
 
 ```bash
@@ -259,6 +259,10 @@ configs/coxnet/
 ├── oepc/
 │   ├── OEPC_balanced_core.py
 │   └── OEPC_same_stage.py
+├── prldfc/
+│   ├── PRLDFC.py
+│   ├── PRLDFC_p3.py
+│   └── same_stage_no_calibration.py
 ├── topc/
 │   └── TOPC.py
 └── trpc/
@@ -273,14 +277,14 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/topc/TOPC.py \
+    configs/coxnet/prldfc/PRLDFC.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```
 
-For a strict same-stage control without any RGB calibration, use
-`configs/coxnet/trpc/same_stage_no_trpc.py`. It has the same RGB/Thermal FPN
-levels and directly feeds both features into AAM/HOFM.
+For a strict same-stage control without RGB calibration, use
+`configs/coxnet/prldfc/same_stage_no_calibration.py`. It has the same
+RGB/Thermal FPN levels and directly feeds both features into AAM/HOFM.
 
 ---
 
