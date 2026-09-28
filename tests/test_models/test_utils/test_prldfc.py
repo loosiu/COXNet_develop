@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from mmcv import Config
 
+from mmdet.models.detectors.fusionnet_xo import FusionNetXO
 from mmdet.models.utils.fusion_strategy import FusionLayer
 from mmdet.models.utils.prldfc import (
     DynamicFrequencyBank,
@@ -95,6 +96,25 @@ def test_prldfc_seed_targets_handle_zero_gt_as_finite_negatives():
         assert torch.isfinite(value.float()).all()
 
 
+def test_prldfc_cardinality_is_image_wise_for_mixed_empty_batch():
+    module = _calibrator()
+    logits = torch.full((2, 1, 1, 1), -4.0, requires_grad=True)
+    offsets = torch.zeros(2, 2, 1, 1)
+    log_scales = torch.zeros(2, 2, 1, 1)
+    valid = torch.ones(2, 1, 1, 1, dtype=torch.bool)
+    boxes = [torch.tensor([[0.0, 0.0, 8.0, 8.0]]), torch.empty(0, 4)]
+
+    losses = module._seed_losses(
+        logits, offsets, log_scales, valid, boxes,
+        padded_size=(8, 8), level_scale_range=(0, 32))
+    losses['cardinality_loss'].backward()
+
+    # Gradient descent must lower the false seed probability in the empty
+    # image even while the non-empty image is under-counted.
+    assert logits.grad[0, 0, 0, 0].item() < 0
+    assert logits.grad[1, 0, 0, 0].item() > 0
+
+
 def test_prldfc_seed_targets_reject_inconsistent_shapes():
     logits, offsets, log_scales = _predictions()
     boxes = [torch.empty(0, 4)]
@@ -170,6 +190,30 @@ def test_prldfc_frequency_bank_restores_autocast_dtype():
     assert diagnostics['projected'].dtype == torch.bfloat16
 
 
+def test_prldfc_local_attention_is_finite_for_direct_half_callers():
+    module = _calibrator()
+    query = torch.randn(1, 4, 5, 7).half().requires_grad_()
+    key = torch.randn_like(query, requires_grad=True)
+    value = torch.randn_like(query, requires_grad=True)
+    valid = torch.ones(1, 1, 5, 7, dtype=torch.bool)
+    valid[:, :, -1] = False
+    valid[:, :, :, -1] = False
+
+    read, attention, entropy = module._local_attention(
+        query, key, value, valid, normalize_query_key=True)
+    (read.float().square().mean() + entropy.float().mean()).backward()
+
+    assert read.dtype == value.dtype
+    assert attention.dtype == value.dtype
+    assert entropy.dtype == value.dtype
+    assert torch.isfinite(read).all()
+    assert torch.isfinite(attention).all()
+    assert torch.isfinite(entropy).all()
+    assert torch.isfinite(query.grad).all()
+    assert torch.isfinite(key.grad).all()
+    assert torch.isfinite(value.grad).all()
+
+
 def _calibrator(**kwargs):
     defaults = dict(
         channels=8,
@@ -215,6 +259,33 @@ def test_prldfc_calibration_is_rgb_only_bounded_and_masks_padding():
     assert aux['support_ratio'].ndim == 0
     assert aux['delta_ratio'].ndim == 0
     assert not hasattr(module, 'rgb_objectness_head')
+
+
+def test_prldfc_seed_predictions_ignore_masked_thermal_values():
+    torch.manual_seed(42)
+    module = _calibrator().eval()
+    with torch.no_grad():
+        module.seed_head.prediction.weight.normal_(mean=0.0, std=0.2)
+    rgb = torch.randn(1, 8, 5, 7)
+    thermal = torch.randn_like(rgb)
+    valid = torch.ones(1, 1, 5, 7, dtype=torch.bool)
+    valid[:, :, :, -1] = False
+    perturbed = thermal.clone()
+    perturbed[:, :, :, -1] += 100.0
+
+    with torch.no_grad():
+        _, reference = module(
+            rgb, thermal, valid_mask=valid, return_aux=True)
+        _, changed = module(
+            rgb, perturbed, valid_mask=valid, return_aux=True)
+
+    expanded_valid = valid.expand_as(reference['seed_logits'])
+    assert torch.equal(
+        reference['seed_logits'][expanded_valid],
+        changed['seed_logits'][expanded_valid])
+    assert torch.equal(
+        reference['seed_gate'][expanded_valid],
+        changed['seed_gate'][expanded_valid])
 
 
 def test_prldfc_sparse_inference_is_identity_without_threshold_seeds():
@@ -401,6 +472,48 @@ def test_prldfc_fusion_layer_inference_records_detached_diagnostics():
     assert len(outputs) == 3
     assert set(layer.last_prldfc_aux) == {0, 1}
     assert not layer.last_prldfc_aux[0]['delta_ratio'].requires_grad
+
+
+def test_prldfc_forward_train_dispatches_aux_path_when_wf_loss_is_disabled():
+    class RecordingHead:
+
+        def __init__(self):
+            self.features = None
+
+        def forward_train(self, features, *args):
+            self.features = features
+            return {'loss_detector': torch.tensor(1.0)}
+
+    class RecordingDetector:
+        wf_loss = False
+        use_trpc = False
+        use_oepc = False
+        use_topc = False
+        use_prldfc = True
+
+        def __init__(self):
+            self.bbox_head = RecordingHead()
+            self.extract_args = None
+            self.extract_kwargs = None
+
+        def extract_feat(self, img, *args, **kwargs):
+            self.extract_args = args
+            self.extract_kwargs = kwargs
+            return ['p3', 'p4'], {'loss_prldfc_seed': torch.tensor(0.5)}
+
+    detector = RecordingDetector()
+    images = (torch.randn(1, 3, 16, 16), torch.randn(1, 3, 16, 16))
+    metas = [dict(img_shape=(16, 16, 3), pad_shape=(16, 16, 3))]
+    boxes = [torch.tensor([[2.0, 2.0, 8.0, 8.0]])]
+    labels = [torch.tensor([0])]
+
+    losses = FusionNetXO.forward_train(
+        detector, images, metas, boxes, labels)
+
+    assert detector.extract_args == (boxes, metas)
+    assert detector.extract_kwargs == {'gt_bboxes_ignore': None}
+    assert detector.bbox_head.features == ['p3', 'p4']
+    assert set(losses) == {'loss_detector', 'loss_prldfc_seed'}
 
 
 def test_prldfc_replacement_is_mutually_exclusive_and_requires_same_shape():

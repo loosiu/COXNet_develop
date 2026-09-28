@@ -289,6 +289,7 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
 
     def _local_attention(self, query, key, value, valid_mask,
                          normalize_query_key=False):
+        output_dtype = value.dtype
         batch, dim, height, width = key.shape
         window = 2 * self.search_radius + 1
         options = window * window
@@ -298,11 +299,12 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
         value_windows = F.unfold(
             value, window, padding=self.search_radius).reshape(
                 batch, value.shape[1], options, height * width)
-        query_flat = query.reshape(batch, query.shape[1], height * width)
+        query_flat = query.reshape(
+            batch, query.shape[1], height * width).float()
+        key_windows = key_windows.float()
         if normalize_query_key:
-            query_flat = F.normalize(query_flat.float(), dim=1).to(query.dtype)
-            key_windows = F.normalize(
-                key_windows.float(), dim=1).to(key.dtype)
+            query_flat = F.normalize(query_flat, dim=1)
+            key_windows = F.normalize(key_windows, dim=1)
         score = (
             query_flat[:, :, None] * key_windows).sum(1) / math.sqrt(dim)
         valid_windows = F.unfold(
@@ -312,15 +314,18 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
             score.masked_fill(~valid_windows, -1e4), dim=1)
         attention = attention * valid_windows.to(attention.dtype)
         attention = attention / attention.sum(1, keepdim=True).clamp_min(1e-12)
-        read = (attention[:, None] * value_windows).sum(2).reshape(
-            batch, value.shape[1], height, width)
+        read = (
+            attention[:, None] * value_windows.float()).sum(2).reshape(
+                batch, value.shape[1], height, width)
         entropy = -(
             attention.clamp_min(1e-12).log() * attention).sum(1, keepdim=True)
         if options > 1:
             entropy = entropy / math.log(options)
         entropy = entropy.reshape(batch, 1, height, width)
         attention = attention.reshape(batch, options, height, width)
-        return read, attention, entropy
+        return (
+            read.to(output_dtype), attention.to(output_dtype),
+            entropy.to(output_dtype))
 
     def _seed_losses(self, logits, offsets, log_scales, valid_mask,
                      gt_bboxes, padded_size, level_scale_range):
@@ -345,10 +350,12 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
             offset_loss = zero
             scale_loss = zero
         probability_mass = (
-            logits.sigmoid() * valid_mask.to(logits.dtype)).sum()
-        eligible = targets['eligible_gt_count']
+            logits.sigmoid() * valid_mask.to(logits.dtype)).flatten(1).sum(1)
+        eligible_per_image = targets['eligible_gt_per_image']
         cardinality_loss = (
-            (probability_mass - eligible).abs() / eligible.clamp_min(1.0))
+            (probability_mass - eligible_per_image).abs() /
+            eligible_per_image.clamp_min(1.0)).mean()
+        eligible = targets['eligible_gt_count']
         return dict(
             seed_loss=_masked_focal_loss(
                 logits, targets['seed_target'], targets['loss_valid'],
@@ -398,7 +405,8 @@ class PrototypeRoutedLocalDynamicFrequencyCalibration(nn.Module):
             raise ValueError('valid_mask must match PRLDFC features')
         valid_mask = valid_mask.bool()
 
-        logits, offsets, log_scales = self.seed_head(thermal)
+        masked_thermal = thermal * valid_mask.to(thermal.dtype)
+        logits, offsets, log_scales = self.seed_head(masked_thermal)
         probability = logits.sigmoid()
         threshold_logit = math.log(
             self.seed_threshold / (1.0 - self.seed_threshold))
@@ -563,6 +571,7 @@ def build_prldfc_seed_targets(seed_logits, seed_offsets, seed_log_scales,
     offset_target = seed_offsets.new_zeros(seed_offsets.shape)
     scale_target = seed_log_scales.new_zeros(seed_log_scales.shape)
     eligible_total = 0
+    eligible_per_image = seed_logits.new_zeros(batch)
     unassigned_total = 0
 
     grid_y, grid_x = torch.meshgrid(
@@ -588,7 +597,9 @@ def build_prldfc_seed_targets(seed_logits, seed_offsets, seed_log_scales,
         eligible = (geometric_scale >= lower) & (geometric_scale < upper)
         boxes = boxes[eligible]
         sizes = sizes[eligible]
-        eligible_total += int(eligible.sum().item())
+        eligible_count = int(eligible.sum().item())
+        eligible_per_image[batch_index] = float(eligible_count)
+        eligible_total += eligible_count
         if boxes.numel() == 0:
             continue
 
@@ -674,6 +685,7 @@ def build_prldfc_seed_targets(seed_logits, seed_offsets, seed_log_scales,
         positive_mask=positive_mask,
         offset_target=offset_target,
         scale_target=scale_target,
+        eligible_gt_per_image=eligible_per_image,
         eligible_gt_count=seed_logits.new_tensor(float(eligible_total)),
         unassigned_gt_count=seed_logits.new_tensor(float(unassigned_total)),
     )

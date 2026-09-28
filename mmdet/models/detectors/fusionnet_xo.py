@@ -122,7 +122,8 @@ class FusionNetXO(SingleStageDetector):
         batch_input_shape = tuple(img[0].size()[-2:])
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
-        if self.wf_loss or self.use_trpc or self.use_oepc or self.use_topc:
+        if (self.wf_loss or self.use_trpc or self.use_oepc or self.use_topc or
+                self.use_prldfc):
             out = self.extract_feat(
                 img, gt_bboxes, img_metas,
                 gt_bboxes_ignore=gt_bboxes_ignore)
