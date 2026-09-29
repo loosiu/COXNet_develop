@@ -397,6 +397,12 @@ class ThermalInstancePrior(nn.Module):
             aux['loss_icbfc_scale'] = self._masked_regression_loss(
                 log_scales, targets['log_scale'],
                 targets['regression_mask'], smooth=True)
+            positive_scores = center_logits.sigmoid()[
+                targets['regression_mask']]
+            aux['center_recall'] = (
+                (positive_scores >= self.score_threshold).to(
+                    center_logits.dtype).mean().detach()
+                if positive_scores.numel() else center_logits.new_zeros(()))
         return instances, aux
 
 

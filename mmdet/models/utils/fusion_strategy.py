@@ -753,7 +753,8 @@ class FusionLayer(nn.Module):
                     tpsc_aux['diversity_loss'])
 
             if self.use_icbfc and icbfc_prior_aux is not None:
-                for key in ('candidate_count', 'candidate_score_mean'):
+                for key in ('candidate_count', 'candidate_score_mean',
+                            'center_recall'):
                     if key in icbfc_prior_aux:
                         aux_losses['icbfc_' + key] = (
                             icbfc_prior_aux[key].detach())
