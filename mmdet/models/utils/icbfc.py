@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .wavelet_process import TransBasicConv2d
+
 
 def haar_dwt(
         tensor: torch.Tensor
@@ -366,6 +368,11 @@ class ThermalInstancePrior(nn.Module):
                     (candidate['centers'].shape[0],), batch_index,
                     device=thermal_s4.device, dtype=torch.long)
 
+        prior_size = torch.tensor(
+            [height, width], device=thermal_s4.device, dtype=torch.long)
+        for instance in instances:
+            instance['prior_size'] = prior_size
+
         counts = center_logits.new_tensor(
             [instance['centers'].shape[0] for instance in instances])
         aux['candidate_count'] = counts.mean()
@@ -391,3 +398,276 @@ class ThermalInstancePrior(nn.Module):
                 log_scales, targets['log_scale'],
                 targets['regression_mask'], smooth=True)
         return instances, aux
+
+
+class ICBFCLevel(nn.Module):
+    """Instance-conditioned cross-band calibration for one FPN level.
+
+    The visible cross-stage feature is first restored to the Thermal spatial
+    resolution with the original COXNet DeConv.  Each Thermal instance then
+    pools four RGB and four Thermal Haar-band tokens, reasons over every
+    Thermal-to-RGB band pair, and routes an instance-specific correction back
+    to its local support.  Overlapping supports are normalized so dense
+    instances cannot amplify the residual merely because they overlap.
+    """
+
+    def __init__(self,
+                 channels: int,
+                 token_dim: int = 64,
+                 residual_scale: float = 0.1,
+                 candidate_chunk_size: int = 256,
+                 support_cutoff: float = 1e-4,
+                 eps: float = 1e-6):
+        super().__init__()
+        if channels <= 0 or token_dim <= 0:
+            raise ValueError('channel dimensions must be positive')
+        if residual_scale <= 0:
+            raise ValueError('residual_scale must be positive')
+        if candidate_chunk_size <= 0:
+            raise ValueError('candidate_chunk_size must be positive')
+        self.channels = int(channels)
+        self.token_dim = int(token_dim)
+        self.residual_scale = float(residual_scale)
+        self.candidate_chunk_size = int(candidate_chunk_size)
+        self.support_cutoff = float(support_cutoff)
+        self.eps = float(eps)
+
+        self.deconv = TransBasicConv2d(channels, channels)
+        self.q_proj = nn.Linear(channels, token_dim, bias=False)
+        self.k_proj = nn.Linear(channels, token_dim, bias=False)
+        self.v_proj = nn.Linear(channels, channels, bias=False)
+        self.band_pair_bias = nn.Parameter(torch.empty(4, 4))
+        self.correction_mlp = nn.Sequential(
+            nn.Linear(3 * channels, channels),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels, channels))
+        self.router = nn.Sequential(
+            nn.Linear(8 * channels, channels),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels, 4))
+        self.out_proj = nn.Conv2d(channels, channels, 1)
+        self._initialize()
+
+    def _initialize(self) -> None:
+        for projection in (self.q_proj, self.k_proj, self.v_proj):
+            nn.init.xavier_uniform_(projection.weight)
+        nn.init.normal_(self.band_pair_bias, std=1e-3)
+        for module in (self.correction_mlp[0], self.router[0]):
+            nn.init.kaiming_normal_(
+                module.weight, mode='fan_in', nonlinearity='relu')
+            nn.init.zeros_(module.bias)
+        nn.init.normal_(self.correction_mlp[-1].weight, std=1e-2)
+        nn.init.zeros_(self.correction_mlp[-1].bias)
+        nn.init.normal_(self.router[-1].weight, std=1e-2)
+        with torch.no_grad():
+            self.router[-1].bias.copy_(torch.linspace(
+                -1e-3, 1e-3, steps=4,
+                device=self.router[-1].bias.device,
+                dtype=self.router[-1].bias.dtype))
+        nn.init.kaiming_normal_(
+            self.out_proj.weight, mode='fan_in', nonlinearity='linear')
+        nn.init.zeros_(self.out_proj.bias)
+
+    def _support_masks(self,
+                       centers: torch.Tensor,
+                       scales: torch.Tensor,
+                       prior_size: torch.Tensor,
+                       band_size: Tuple[int, int]) -> torch.Tensor:
+        """Make bounded local Gaussian supports on the DWT lattice."""
+        band_h, band_w = band_size
+        prior_h = prior_size[0].to(dtype=centers.dtype).clamp(min=1)
+        prior_w = prior_size[1].to(dtype=centers.dtype).clamp(min=1)
+        center_x = centers[:, 0] * band_w / prior_w
+        center_y = centers[:, 1] * band_h / prior_h
+        scale_x = scales[:, 0].clamp(min=1) * band_w / prior_w
+        scale_y = scales[:, 1].clamp(min=1) * band_h / prior_h
+        sigma_x = (0.5 * scale_x).clamp(min=0.5)
+        sigma_y = (0.5 * scale_y).clamp(min=0.5)
+
+        yy = torch.arange(
+            band_h, device=centers.device, dtype=centers.dtype)
+        xx = torch.arange(
+            band_w, device=centers.device, dtype=centers.dtype)
+        yy, xx = torch.meshgrid(yy, xx, indexing='ij')
+        distance = (
+            (xx.unsqueeze(0) - center_x[:, None, None]).square() /
+            (2 * sigma_x[:, None, None].square()) +
+            (yy.unsqueeze(0) - center_y[:, None, None]).square() /
+            (2 * sigma_y[:, None, None].square()))
+        masks = torch.exp(-distance)
+        return torch.where(
+            masks >= self.support_cutoff, masks, torch.zeros_like(masks))
+
+    def _pool_tokens(self, bands: torch.Tensor,
+                     masks: torch.Tensor) -> torch.Tensor:
+        normalizer = masks.sum(dim=(-2, -1)).clamp(min=self.eps)
+        return (torch.einsum('nhw,bchw->nbc', masks, bands) /
+                normalizer[:, None, None])
+
+    def _empty_aux(self, reference: torch.Tensor) -> Dict[str, torch.Tensor]:
+        return dict(
+            rgb_tokens=reference.new_empty((0, 4, self.channels)),
+            thermal_tokens=reference.new_empty((0, 4, self.channels)),
+            relation=reference.new_empty((0, 4, 4)),
+            router_weights=reference.new_empty((0, 4)),
+            candidate_count=reference.new_zeros(()),
+            support_ratio=reference.new_zeros(()),
+            overlap_ratio=reference.new_zeros(()),
+            relation_diagonal=reference.new_zeros(()),
+            relation_off_diagonal=reference.new_zeros(()),
+            relation_entropy=reference.new_zeros(()),
+            router_entropy=reference.new_zeros(()),
+            router_active_bands=reference.new_zeros(()),
+            router_variance=reference.new_zeros(()),
+            router_band_mean=reference.new_zeros((4,)),
+            delta_ratio=reference.new_zeros(()))
+
+    def forward(self,
+                thermal: torch.Tensor,
+                visible: torch.Tensor,
+                instances: Sequence[Dict[str, torch.Tensor]],
+                img_metas: Sequence[dict] = None,
+                return_aux: bool = False):
+        if thermal.ndim != 4 or visible.ndim != 4:
+            raise ValueError('thermal and visible must be BCHW tensors')
+        if thermal.shape[0] != visible.shape[0]:
+            raise ValueError('thermal and visible batch sizes must match')
+        if len(instances) != thermal.shape[0]:
+            raise ValueError('instances must contain one entry per image')
+
+        visible_up = self.deconv(visible)
+        if visible_up.shape != thermal.shape:
+            raise ValueError(
+                'DeConv RGB feature must exactly match the Thermal feature')
+        if thermal.shape[-2] % 2 or thermal.shape[-1] % 2:
+            raise ValueError('ICBFC requires even feature-map dimensions')
+
+        rgb_bands = torch.stack(haar_dwt(visible_up), dim=1)
+        thermal_bands = torch.stack(haar_dwt(thermal), dim=1)
+        batch_size, _, channels, band_h, band_w = rgb_bands.shape
+        valid_mask = None
+        if img_metas is not None:
+            if len(img_metas) != batch_size:
+                raise ValueError('img_metas must match the batch size')
+            valid_mask = _valid_mask(
+                img_metas, (band_h, band_w), thermal.device)
+        band_delta = rgb_bands.new_zeros(rgb_bands.shape)
+        support_denominator = rgb_bands.new_zeros(
+            (batch_size, 1, band_h, band_w))
+        overlap_pixels = rgb_bands.new_zeros(())
+        supported_pixels = rgb_bands.new_zeros(())
+        rgb_token_values = []
+        thermal_token_values = []
+        relation_values = []
+        router_values = []
+
+        for batch_index, instance in enumerate(instances):
+            centers = instance['centers'].to(
+                device=thermal.device, dtype=thermal.dtype)
+            scales = instance['scales'].to(
+                device=thermal.device, dtype=thermal.dtype)
+            if centers.numel() == 0:
+                continue
+            prior_size = instance.get('prior_size')
+            if prior_size is None:
+                raise ValueError('each instance entry requires prior_size')
+            prior_size = prior_size.to(device=thermal.device)
+            chunks = instance.get('chunks')
+            if chunks is None or chunks.numel() == 0:
+                chunks = torch.tensor(
+                    [(start, min(start + self.candidate_chunk_size,
+                                 centers.shape[0]))
+                     for start in range(0, centers.shape[0],
+                                        self.candidate_chunk_size)],
+                    device=thermal.device, dtype=torch.long)
+
+            for chunk in chunks.tolist():
+                start, end = int(chunk[0]), int(chunk[1])
+                if end <= start:
+                    continue
+                masks = self._support_masks(
+                    centers[start:end], scales[start:end], prior_size,
+                    (band_h, band_w))
+                if valid_mask is not None:
+                    masks = masks * valid_mask[
+                        batch_index, 0].to(dtype=masks.dtype)
+                rgb_tokens = self._pool_tokens(
+                    rgb_bands[batch_index], masks)
+                thermal_tokens = self._pool_tokens(
+                    thermal_bands[batch_index], masks)
+
+                queries = self.q_proj(rgb_tokens)
+                keys = self.k_proj(thermal_tokens)
+                values = self.v_proj(thermal_tokens)
+                relation = torch.softmax(
+                    torch.einsum('nbd,nad->nba', queries, keys) /
+                    math.sqrt(self.token_dim) + self.band_pair_bias,
+                    dim=-1)
+                complement = torch.einsum('nba,nac->nbc', relation, values)
+                correction = self.correction_mlp(torch.cat((
+                    rgb_tokens, complement, complement - rgb_tokens), dim=-1))
+                router_input = torch.cat((
+                    rgb_tokens.reshape(rgb_tokens.shape[0], -1),
+                    complement.reshape(complement.shape[0], -1)), dim=-1)
+                router_weights = sparsemax(self.router(router_input), dim=-1)
+                routed = correction * router_weights.unsqueeze(-1)
+
+                score = instance.get('scores')
+                if score is not None:
+                    score = score[start:end].to(
+                        device=thermal.device, dtype=thermal.dtype)
+                    routed = routed * score[:, None, None]
+                numerator = torch.einsum('nhw,nbc->bchw', masks, routed)
+                denominator = masks.sum(dim=0, keepdim=True)
+                band_delta[batch_index] += numerator
+                support_denominator[batch_index] += denominator
+                overlap_pixels += (denominator > 1).sum()
+                supported_pixels += (denominator > 0).sum()
+                rgb_token_values.append(rgb_tokens)
+                thermal_token_values.append(thermal_tokens)
+                relation_values.append(relation)
+                router_values.append(router_weights)
+
+        if not rgb_token_values:
+            aux = self._empty_aux(visible_up)
+            return (visible_up, aux) if return_aux else visible_up
+
+        normalized_delta = band_delta / support_denominator.clamp(min=self.eps)
+        reconstructed = haar_idwt(
+            normalized_delta[:, 0], normalized_delta[:, 1],
+            normalized_delta[:, 2], normalized_delta[:, 3])
+        residual = self.residual_scale * torch.tanh(self.out_proj(reconstructed))
+        output = visible_up + residual
+
+        rgb_tokens = torch.cat(rgb_token_values, dim=0)
+        thermal_tokens = torch.cat(thermal_token_values, dim=0)
+        relation = torch.cat(relation_values, dim=0)
+        router_weights = torch.cat(router_values, dim=0)
+        diagonal = relation.diagonal(dim1=-2, dim2=-1)
+        off_diagonal = relation.sum(dim=(-2, -1)) - diagonal.sum(dim=-1)
+        detached_relation = relation.detach()
+        detached_router = router_weights.detach()
+        aux = dict(
+            rgb_tokens=rgb_tokens.detach(),
+            thermal_tokens=thermal_tokens.detach(),
+            relation=detached_relation,
+            router_weights=detached_router,
+            candidate_count=visible_up.new_tensor(rgb_tokens.shape[0]),
+            support_ratio=(support_denominator > 0).to(
+                visible_up.dtype).mean().detach(),
+            overlap_ratio=(overlap_pixels /
+                           supported_pixels.clamp(min=1)).detach(),
+            relation_diagonal=diagonal.mean().detach(),
+            relation_off_diagonal=(off_diagonal / 12).mean().detach(),
+            relation_entropy=(-detached_relation.clamp(min=self.eps).log() *
+                              detached_relation).sum(dim=-1).mean(),
+            router_entropy=(-detached_router.clamp(min=self.eps).log() *
+                            detached_router).sum(dim=-1).mean(),
+            router_active_bands=(detached_router > 0).to(
+                visible_up.dtype).sum(dim=-1).mean(),
+            router_variance=detached_router.var(
+                dim=0, unbiased=False).mean(),
+            router_band_mean=detached_router.mean(dim=0),
+            delta_ratio=(residual.norm() /
+                         visible_up.detach().norm().clamp(min=self.eps)).detach())
+        return (output, aux) if return_aux else output

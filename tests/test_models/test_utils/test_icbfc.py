@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from mmdet.models.utils.icbfc import (
-    ThermalInstancePrior, build_instance_targets,
+    ICBFCLevel, ThermalInstancePrior, build_instance_targets,
     extract_instance_candidates, haar_dwt, haar_idwt, sparsemax)
 
 
@@ -220,6 +220,166 @@ class TestThermalInstancePrior(unittest.TestCase):
         self.assertEqual(instances[1]['centers'].shape[0], 64)
         self.assertTrue((instances[0]['batch_index'] == 0).all())
         self.assertTrue((instances[1]['batch_index'] == 1).all())
+
+
+class TestICBFCLevel(unittest.TestCase):
+
+    @staticmethod
+    def _instance(centers=None, scales=None):
+        if centers is None:
+            centers = torch.tensor([[4.0, 5.0], [11.0, 10.0]])
+        if scales is None:
+            scales = torch.tensor([[2.0, 3.0], [4.0, 2.0]])
+        count = centers.shape[0]
+        return [dict(
+            centers=centers,
+            scales=scales,
+            scores=torch.ones(count),
+            batch_index=torch.zeros(count, dtype=torch.long),
+            chunks=torch.tensor([[0, count]], dtype=torch.long).reshape(-1, 2),
+            prior_size=torch.tensor([16, 20], dtype=torch.long))]
+
+    @staticmethod
+    def _features(requires_grad=False):
+        torch.manual_seed(11)
+        thermal = torch.randn(
+            1, 8, 16, 20, requires_grad=requires_grad)
+        visible = torch.randn(
+            1, 8, 8, 10, requires_grad=requires_grad)
+        return thermal, visible
+
+    def test_level_extracts_eight_tokens_per_instance(self):
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+
+        _, aux = module(
+            thermal, visible, self._instance(), return_aux=True)
+
+        self.assertEqual(aux['rgb_tokens'].shape, (2, 4, 8))
+        self.assertEqual(aux['thermal_tokens'].shape, (2, 4, 8))
+
+    def test_relation_is_four_by_four_and_rows_sum_to_one(self):
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+
+        _, aux = module(
+            thermal, visible, self._instance(), return_aux=True)
+
+        self.assertEqual(aux['relation'].shape, (2, 4, 4))
+        torch.testing.assert_close(
+            aux['relation'].sum(dim=-1), torch.ones(2, 4),
+            atol=1e-6, rtol=0)
+
+    def test_off_diagonal_relation_changes_rgb_output(self):
+        torch.manual_seed(12)
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+        diagonal = torch.full((4, 4), -20.0)
+        diagonal.fill_diagonal_(20.0)
+        off_diagonal = torch.full((4, 4), 20.0)
+        off_diagonal.fill_diagonal_(-20.0)
+
+        with torch.no_grad():
+            module.band_pair_bias.copy_(diagonal)
+        diagonal_output = module(thermal, visible, self._instance())
+        with torch.no_grad():
+            module.band_pair_bias.copy_(off_diagonal)
+        off_diagonal_output = module(thermal, visible, self._instance())
+
+        self.assertFalse(torch.allclose(
+            diagonal_output, off_diagonal_output, atol=1e-7, rtol=0))
+
+    def test_sparse_router_can_choose_different_bands_per_instance(self):
+        torch.manual_seed(13)
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+
+        _, aux = module(
+            thermal, visible, self._instance(), return_aux=True)
+
+        self.assertEqual(aux['router_weights'].shape, (2, 4))
+        torch.testing.assert_close(
+            aux['router_weights'].sum(dim=-1), torch.ones(2),
+            atol=1e-6, rtol=0)
+        self.assertGreater(
+            (aux['router_weights'][0] -
+             aux['router_weights'][1]).abs().sum().item(), 0.0)
+
+    def test_overlapping_supports_are_normalized_not_summed(self):
+        torch.manual_seed(14)
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+        one = self._instance(
+            centers=torch.tensor([[6.0, 6.0]]),
+            scales=torch.tensor([[3.0, 3.0]]))
+        duplicate = self._instance(
+            centers=torch.tensor([[6.0, 6.0], [6.0, 6.0]]),
+            scales=torch.tensor([[3.0, 3.0], [3.0, 3.0]]))
+
+        one_output = module(thermal, visible, one)
+        duplicate_output = module(thermal, visible, duplicate)
+
+        torch.testing.assert_close(
+            duplicate_output, one_output, atol=1e-5, rtol=1e-5)
+
+    def test_no_instances_return_exact_deconv_identity(self):
+        module = ICBFCLevel(channels=8, token_dim=8)
+        module.eval()
+        thermal, visible = self._features()
+        empty = self._instance(
+            centers=torch.empty(0, 2), scales=torch.empty(0, 2))
+
+        output, aux = module(thermal, visible, empty, return_aux=True)
+        expected = module.deconv(visible)
+
+        torch.testing.assert_close(output, expected, atol=0, rtol=0)
+        self.assertEqual(aux['candidate_count'].item(), 0)
+
+    def test_level_preserves_thermal_and_matches_thermal_shape(self):
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+        thermal_before = thermal.clone()
+
+        output = module(thermal, visible, self._instance())
+
+        self.assertEqual(output.shape, thermal.shape)
+        torch.testing.assert_close(thermal, thermal_before)
+
+    def test_first_backward_reaches_qkv_router_output_and_deconv(self):
+        torch.manual_seed(15)
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features(requires_grad=True)
+
+        output = module(thermal, visible, self._instance())
+        output.square().mean().backward()
+
+        for prefix in ('q_proj', 'k_proj', 'v_proj', 'router',
+                       'correction_mlp', 'out_proj', 'deconv'):
+            gradients = [
+                parameter.grad for name, parameter in module.named_parameters()
+                if name.startswith(prefix)
+            ]
+            self.assertTrue(gradients, prefix)
+            self.assertTrue(all(gradient is not None for gradient in gradients),
+                            prefix)
+            self.assertGreater(
+                sum(gradient.abs().sum().item() for gradient in gradients),
+                0.0, prefix)
+        self.assertGreater(thermal.grad.abs().sum().item(), 0.0)
+        self.assertGreater(visible.grad.abs().sum().item(), 0.0)
+
+    def test_initial_delta_ratio_is_finite_nonzero_and_below_point_two(self):
+        torch.manual_seed(16)
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal, visible = self._features()
+
+        _, aux = module(
+            thermal, visible, self._instance(), return_aux=True)
+
+        ratio = aux['delta_ratio']
+        self.assertTrue(torch.isfinite(ratio))
+        self.assertGreater(ratio.item(), 0.0)
+        self.assertLess(ratio.item(), 0.2)
 
 
 if __name__ == '__main__':
