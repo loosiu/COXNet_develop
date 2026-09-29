@@ -345,6 +345,19 @@ class TestICBFCLevel(unittest.TestCase):
         self.assertEqual(output.shape, thermal.shape)
         torch.testing.assert_close(thermal, thermal_before)
 
+    def test_level_support_normalization_broadcasts_for_batch(self):
+        module = ICBFCLevel(channels=8, token_dim=8)
+        thermal = torch.randn(2, 8, 16, 20)
+        visible = torch.randn(2, 8, 8, 10)
+        instances = self._instance() + self._instance(
+            centers=torch.tensor([[7.0, 8.0]]),
+            scales=torch.tensor([[2.0, 2.0]]))
+
+        output = module(thermal, visible, instances)
+
+        self.assertEqual(output.shape, thermal.shape)
+        self.assertTrue(torch.isfinite(output).all())
+
     def test_first_backward_reaches_qkv_router_output_and_deconv(self):
         torch.manual_seed(15)
         module = ICBFCLevel(channels=8, token_dim=8)

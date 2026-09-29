@@ -638,7 +638,8 @@ class ICBFCLevel(nn.Module):
             aux = self._empty_aux(visible_up)
             return (visible_up, aux) if return_aux else visible_up
 
-        normalized_delta = band_delta / support_denominator.clamp(min=self.eps)
+        normalized_delta = band_delta / support_denominator.unsqueeze(2).clamp(
+            min=self.eps)
         reconstructed = haar_idwt(
             normalized_delta[:, 0], normalized_delta[:, 1],
             normalized_delta[:, 2], normalized_delta[:, 3])
