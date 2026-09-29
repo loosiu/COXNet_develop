@@ -1,321 +1,225 @@
-# COXNet CLFM Replacements: TPSC and Prior Experiments
+<div align="center">
 
-**IEEE Transactions on Circuits and Systems for Video Technology**, Vol. 36, No. 1, January 2026
+# ICBFC for COXNet
 
-[![paper](https://img.shields.io/badge/IEEE%20TCSVT-2026-blue)](https://doi.org/10.1109/TCSVT.2025.3595147)
+### Instance-Conditioned Cross-Band Frequency Calibration for RGBT Tiny Object Detection
 
-**Authors:** Peiran Peng, Tingfa Xu, Liqiang Song, Mengqi Zhu, Yuqiang Fang, Jianan Li
+[![Python](https://img.shields.io/badge/Python-3.9-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-1.10-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![MMDetection](https://img.shields.io/badge/MMDetection-2.x-2C3E50)](https://github.com/open-mmlab/mmdetection)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![COXNet Paper](https://img.shields.io/badge/IEEE%20TCSVT-COXNet-blue)](https://doi.org/10.1109/TCSVT.2025.3595147)
 
----
+An experimental CLFM replacement that asks a separate frequency-fusion
+question for every Thermal object instance.
 
-## Introduction
+</div>
 
-COXNet is an RGBT tiny object detection framework that jointly addresses cross-modal fusion, misalignment, and scale variation in drone-based multi-spectral imagery. The core innovations are: **(1) CLFM** (Cross-Layer Fusion Module), which leverages wavelet decomposition to align and fuse complementary RGB and thermal features across pyramid levels; **(2) DASR** (Dynamic Adaptive Scale Refinement), which recalibrates spatial correspondences and integrates multi-scale contextual cues for robust tiny object localization; and **(3) a GeoShape-based label assignment strategy** that better fits the irregular geometry of tiny aerial targets, improving recall under severe scale imbalance.
+## News
 
-This repository studies complete replacements for COXNet's CLFM while keeping
-the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
-The current experimental method is **TPSC (Tiny-aware Prototype Semantic
-Calibration)**. RGB and Thermal FPNs both start at level 1. Detail-preserving
-P3/P4 descriptors produce shared semantic slots; same-slot cross-modal
-conditioning and an optional compact relation block predict bounded channel
-scales for RGB P3/P4 only. Original Thermal values and P5/P6 enter AAM/HOFM
-unchanged.
+- **2026-09-29:** Added the complete ICBFC implementation, focused regression
+  tests, real-batch GPU smoke test, and fresh three-seed GPU-0 workflow.
+- **2026-09-29:** Preserved the original COXNet cross-stage FPN pairing, RGB
+  DeConv, AAM/HOFM, `wf_loss`, detector head, assignment, and postprocessing.
+- **Experiment status:** ICBFC accuracy and checkpoints are pending. Structural
+  validation is not an AP-improvement claim.
 
-TPSC contains no cross-stage pairing, DeConv, DWT/IDWT, spatial candidates,
-hard top-k quota, local correspondence search, EDL, teacher model, or feature
-warp. Legacy PRLDFC, TOPC, OEPC, and TRPC remain available for controlled
-comparisons and reproducibility. See [the TPSC method note](docs/TPSC.md),
-[the design](docs/superpowers/specs/2026-09-29-tpsc-design.md), and
-[the implementation plan](docs/superpowers/plans/2026-09-29-tpsc-implementation.md).
+## Framework
 
-### TPSC data flow
+```mermaid
+flowchart LR
+    TS4[Raw Thermal stride-4 feature] --> P[Class-agnostic instance prior]
+    P --> I[Variable-count centers and scales]
 
-```text
-RGB/T P3/P4 ─ detail + P4 context ─ shared semantic slots ─ relation ─┐
-                                                                       ↓
-RGB P3/P4 ───────────── fixed-bound channel scaling ── RGB_cal P3/P4 ─┐
-Thermal P3/P4 (unchanged) ─────────────────────────────────────────────┴─ AAM/HOFM
+    R[Lower-resolution RGB FPN] --> U[Original x2 RGB DeConv]
+    T[Thermal FPN] --> WD[DWT: LL / LH / HL / HH]
+    U --> WR[DWT: LL / LH / HL / HH]
+
+    I --> TOK[Instance Gaussian pooling]
+    WD --> TOK
+    WR --> TOK
+    TOK --> A[Instance-wise 4x4 Thermal-to-RGB band relation]
+    A --> G[Sparse instance band router]
+    G --> S[Overlap-normalized spatial reconstruction]
+    S --> IDWT[IDWT and bounded RGB residual]
+    U --> ADD[Calibrated RGB]
+    IDWT --> ADD
+    ADD --> H[AAM / HOFM]
+    T --> H
+    H --> D[GFLQ detection head]
 ```
 
-Thermal Gaussian coverage supervision keeps the slot set target-aware without
-assigning slots to individual people. The canonical relation model uses only 32
-prototype nodes (four modality/level groups of eight) and calibrates RGB with a
-fixed ten-percent channel-scale bound. Spatial alignment remains in AAM.
+ICBFC keeps COXNet's four cross-stage pairs. For each detected Thermal
+instance, it extracts four RGB and four Thermal Haar-band tokens, learns an
+all-to-all `4 x 4` complementary relation, and selects RGB target bands with a
+sparse router. Instance residuals are projected back with normalized Gaussian
+supports so overlapping people do not amplify the update by count alone.
 
----
+The Thermal feature itself is never overwritten. Only the DeConv-restored RGB
+feature is calibrated before the unchanged AAM/HOFM. DWT is an implementation
+primitive, not the claimed contribution, and this implementation is not a
+copy of the full DyFCLT architecture. See [the ICBFC method note](docs/ICBFC.md)
+for equations, diagnostics, and falsification criteria.
 
-## Main Results
+## Method at a Glance
 
-### TPSC status
+| Design question | ICBFC choice |
+|---|---|
+| How are crowded tiny objects separated? | A supervised stride-4 Thermal center/offset/scale prior |
+| Is the candidate count fixed? | No. All valid local maxima above threshold are processed in chunks |
+| What is instance-conditioned? | Eight modality-band tokens, the `4 x 4` relation, and the four-band router |
+| How are overlapping instances combined? | Gaussian numerator/denominator normalization |
+| What enters AAM/HOFM? | Calibrated RGB and the original Thermal feature |
+| What remains from baseline COXNet? | Cross-stage FPNs, RGB DeConv, AAM/HOFM, `wf_loss`, GFLQ, QLSAssigner, NMS |
 
-TPSC has focused tests for padding exclusion, empty-GT stability, shared-slot
-normalization, Thermal preservation, bounded non-zero RGB modulation, gradient
-flow, interventions, FusionLayer integration, and config contracts. Training
-and AP comparison are pending. Structural validation is not an accuracy claim.
+Training uses GT geometry to ensure that every labeled object supervises the
+frequency path. Inference uses only the predicted Thermal prior. The prior has
+CenterNet-style center supervision plus offset and log-scale regression; no
+band label, cross-modal alignment target, or fixed top-k quota is introduced.
 
-### Initial cross-stage TRPC three-seed result
+## Results and Verification Status
 
-The completed legacy cross-stage seeds 0/1/2 are summarized in the COXNet
-Table 1 column order. These results do not apply to the new same-stage config.
-The best-checkpoint mean mAP50 is **45.77 ± 0.43**, compared with
-**45.70 ± 0.49** for the paired COXNet reruns. See
-[the full per-seed table and interpretation](docs/trpc_table1_ko.md).
+| Method | Configuration | Focused tests | Real-batch GPU smoke | Seeds 0/1/2 | RGBTDronePerson AP50 |
+|---|---|---:|---:|---:|---:|
+| Official COXNet | `configs/coxnet/coxnet_r50_fpn_1x_rgbtdroneperson.py` | Legacy path builds | N/A | Paper result | 45.57 |
+| ICBFC | `configs/coxnet/icbfc/ICBFC.py` | 33 passed locally | Pending before launch | Pending | Pending |
 
-### RGBTDronePerson
+The COXNet number is the published Table 1 result, not a new run from this
+branch. ICBFC rows will be updated only after fresh checkpoints and evaluation
+logs exist. The legacy cross-stage TRPC three-seed record remains available in
+[its separate result note](docs/trpc_table1_ko.md).
 
-[[Dataset Link](https://nnnnerd.github.io/RGBTDronePerson/)]
+## Quick Start
 
-| Method | mAP25 | mAP50 (all) | mAP50 (tiny) | mAP50 (tiny1) | mAP50 (tiny2) | mAP50 (tiny3) | mAP50 (small) | FLOPs (G) | FPS |
-|--------|-------|-------------|--------------|---------------|---------------|---------------|---------------|-----------|-----|
-| Cascade R-CNN | 42.47 | 31.55 | 31.99 | 0.00 | 29.43 | 37.77 | 33.61 | 76.23 | 11.8 |
-| RetinaNet | 38.92 | 22.87 | 23.34 | 4.69 | 13.57 | 32.66 | 15.77 | 49.48 | 19.4 |
-| FCOS | 45.21 | 29.89 | 30.71 | 9.40 | 22.73 | 34.87 | 26.00 | 78.32 | 19.2 |
-| ATSS | 53.14 | 36.24 | 37.47 | 16.92 | 24.16 | 43.59 | 24.62 | 48.73 | 19.0 |
-| GFL | 56.91 | 39.74 | 41.67 | 12.47 | 30.23 | 47.68 | 26.72 | 49.22 | 18.7 |
-| FCOS w/ RFLA | 51.41 | 38.20 | 39.45 | 25.87 | 30.93 | 44.31 | 25.32 | 110.62 | 13.9 |
-| QueryDet | 55.16 | 37.07 | 37.75 | 17.89 | 24.90 | 44.05 | 25.52 | 121.67 | 12.8 |
-| TINet | 40.34 | 28.30 | 28.60 | 0.00 | 24.12 | 34.99 | 34.97 | 92.80 | 13.0 |
-| CFT | 37.32 | 22.69 | 22.83 | 16.72 | 18.14 | 27.52 | 8.14 | 112.02 | 10.8 |
-| HRFuser | 33.24 | 22.23 | 22.50 | 0.00 | 26.73 | 26.26 | 23.85 | 54.17 | 4.5 |
-| QFDet | 57.34 | 42.08 | 44.04 | 20.27 | 30.09 | 50.36 | 26.78 | 81.43 | 14.2 |
-| QFDet* | 61.62 | 46.72 | 48.75 | 22.15 | 37.91 | 53.71 | 28.41 | 242.82 | 5.7 |
-| **COXNet (Ours)** | **59.01** | **45.57** | **47.18** | **27.37** | **35.55** | **52.56** | **29.74** | **51.27** | **17.6** |
-| **COXNet* (Ours)** | **62.76** | **50.04** | **51.82** | **23.08** | **40.10** | **56.76** | **30.89** | **123.59** | **12.9** |
-
-† indicates methods adapted for the RGBT baseline detector. * denotes models utilizing detection heads with P2-P6 feature maps.
-
-### VTUAV-det
-
-[[Dataset Link](https://nnnnerd.github.io/RGBTDronePerson/)]
-
-| Method | mAP | mAP50 | mAP75 | mAPs | mAPm | mAPl | FPS |
-|--------|-----|-------|-------|------|------|------|-----|
-| ATSS | 21.4 | 52.7 | 13.9 | 5.9 | 20.8 | 45.2 | 25.1 |
-| GFL | 29.8 | 67.8 | 22.2 | 10.3 | 27.9 | 55.7 | 23.6 |
-| QueryDet | 29.5 | 68.9 | 20.2 | 7.8 | 29.9 | 53.5 | 14.6 |
-| CFT | 8.7 | 29.3 | 2.4 | 3.9 | 8.5 | 23.4 | 8.3 |
-| HRFuser | 25.9 | 55.9 | 20.1 | 2.7 | 27.9 | 51.9 | 5.6 |
-| TINet | 26.8 | 59.4 | 20.1 | 1.2 | 29.0 | 53.7 | 14.5 |
-| QFDet | 31.1 | 70.4 | 22.9 | 12.5 | 20.4 | 56.8 | 15.3 |
-| QFDet* | 33.3 | 75.5 | 24.2 | 18.1 | 32.4 | 57.2 | 9.4 |
-| **COXNet (Ours)** | **31.5** | **71.8** | **23.1** | **15.3** | **30.6** | **56.0** | **21.2** |
-| **COXNet* (Ours)** | **33.5** | **76.1** | **25.1** | **18.6** | **32.6** | **56.8** | **15.0** |
-
-### NII-CU
-
-[[Dataset Link](https://www.okutama-segmentation.org/)]
-
-| Method | mAP | mAP50 | mAP75 | FPS |
-|--------|-----|-------|-------|-----|
-| ATSS | 54.6 | 95.5 | 55.0 | 24.1 |
-| GFL | 61.0 | 96.7 | 71.2 | 19.6 |
-| CFT | 51.2 | 95.1 | 58.7 | 9.2 |
-| QFDet | 58.3 | 96.7 | 65.3 | 17.3 |
-| QFDet* | 63.7 | 97.6 | 76.4 | 10.3 |
-| **COXNet (Ours)** | **61.4** | **98.2** | **70.5** | **17.9** |
-| **COXNet* (Ours)** | **65.4** | **97.9** | **79.6** | **13.1** |
-
----
-
-## Installation
-
-**Requirements:** CUDA 11.3 · Python 3.9.18
-
-**Step 1 — Clone the repository**
+### 1. Environment
 
 ```bash
 git clone git@github.com:loosiu/COXNet_develop.git
 cd COXNet_develop
-```
 
-**Step 2 — Install PyTorch**
-
-```bash
 pip install torch==1.10.0+cu113 torchvision==0.11.1+cu113 \
-    -f https://download.pytorch.org/whl/torch_stable.html
-```
-
-**Step 3 — Install mmcv-full**
-
-```bash
+  -f https://download.pytorch.org/whl/torch_stable.html
 pip install mmcv-full==1.7.0 \
-    -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10/index.html
-```
-
-**Step 4 — Install remaining dependencies**
-
-```bash
+  -f https://download.openmmlab.com/mmcv/dist/cu113/torch1.10/index.html
 pip install -r requirements.txt
 pip install setuptools==59.5.0 --force-reinstall
 python setup.py develop
 ```
 
----
+### 2. Dataset
 
-## Dataset Preparation
+Datasets are not tracked in git. For RGBTDronePerson, use this layout:
 
-COXNet is evaluated on three RGBT benchmarks:
-
-| Dataset | Description | Link |
-|---------|-------------|------|
-| **RGBTDronePerson** | Drone-based RGB-thermal person detection | [Project page](https://nnnnerd.github.io/RGBTDronePerson/) |
-| **VTUAV-det** | Aerial vehicle and UAV detection | [Project page](https://nnnnerd.github.io/RGBTDronePerson/) |
-| **NII-CU** | 6,000 RGBT image pairs with 19,000 annotated instances (pedestrian, vehicle, cyclist) | [Dataset](https://www.okutama-segmentation.org/) |
-
-Datasets are intentionally not included in this repository. Organize them
-locally under the git-ignored `data/` directory as follows:
-
-```
-data/
-├── RGBTDronePerson/
-│   ├── train/
-│   │   ├── visible/
-│   │   └── infrared/
-│   └── val/
-│       ├── visible/
-│       └── infrared/
-└── VTUAV/
-    ├── train/
-    └── val/
+```text
+data/RGBTDronePerson/
+├── train/
+│   ├── visible/
+│   └── infrared/
+├── val/
+│   ├── visible/
+│   └── infrared/
+├── train_thermal.json
+└── val_thermal.json
 ```
 
-Update the `data_root` paths in the corresponding config files under `configs/_base_/datasets/` before training.
-
----
-
-## Training
-
-**TPSC matched seed-0 controls and canonical model**
+Alternatively, point the training process at an external dataset directory:
 
 ```bash
-python tools/train.py configs/coxnet/tpsc/same_stage_control.py --seed 0 --deterministic
-python tools/train.py configs/coxnet/tpsc/TPSC_core.py --seed 0 --deterministic
-python tools/train.py configs/coxnet/tpsc/TPSC_relation.py --seed 0 --deterministic
+export MMDET_DATASETS=/absolute/path/to/RGBTDronePerson/
 ```
 
-Run `TPSC_relation.py` with seeds 1 and 2 and distinct `--work-dir` paths after
-the seed-0 mechanism check. See [docs/TPSC.md](docs/TPSC.md) for the exact
-method, losses, diagnostics, and causal interventions.
-
-**PRLDFC complete CLFM replacement, canonical P3/P4 treatment (seed 0)**
+### 3. Verify the mechanism
 
 ```bash
-python tools/train.py configs/coxnet/prldfc/PRLDFC.py \
-    --seed 0 --deterministic
+python -m unittest \
+  tests.test_models.test_utils.test_icbfc \
+  tests.test_models.test_utils.test_icbfc_fusion \
+  tests.test_models.test_detectors.test_icbfc_config \
+  tests.test_tools.test_icbfc_launcher -v
+
+CUDA_VISIBLE_DEVICES=0 python tools/misc/smoke_icbfc.py \
+  --config configs/coxnet/icbfc/ICBFC.py
 ```
 
-Use `configs/coxnet/prldfc/PRLDFC_p3.py` for the P3-only level ablation and
-`configs/coxnet/prldfc/same_stage_no_calibration.py` for the matched same-stage
-control. Compare these at seed 0 before launching additional seeds.
+The smoke test loads one real training sample and requires finite, non-zero
+gradients in the center/offset/scale prior, relation Q/K/V, router, output
+projection, and all four DeConv paths.
 
-**TOPC complete CLFM replacement, single GPU (seed 0)**
+### 4. Train
+
+Fresh sequential seeds `0 -> 1 -> 2` on physical GPU 0:
 
 ```bash
-python tools/train.py configs/coxnet/topc/TOPC.py \
-    --seed 0 --deterministic
+bash tools/run_icbfc_seeds_gpu0.sh
 ```
 
-Use the same command with seeds 1 and 2 and separate `--work-dir` values for a
-three-seed comparison. TOPC uses same-stage P3-P6 features, calibrates RGB P3
-only, leaves Thermal unchanged, and then runs the original AAM/HOFM.
+The launcher uses a GPU-0 lock, distinct seed directories, deterministic mode,
+and no auto-resume. It refuses non-empty target directories by default.
 
-**Balanced OEPC complete CLFM replacement, single GPU (seed 0)**
+Single-run commands:
 
 ```bash
-python tools/train.py configs/coxnet/oepc/OEPC_balanced_core.py \
-    --seed 0 --deterministic
+python tools/train.py configs/coxnet/icbfc/ICBFC.py \
+  --work-dir work_dir/coxmamba/rgbtdroneperson/icbfc/seed0 \
+  --gpu-id 0 --seed 0 --deterministic
+
+python tools/train.py \
+  configs/coxnet/coxnet_r50_fpn_1x_rgbtdroneperson.py \
+  --work-dir work_dir/coxmamba/rgbtdroneperson/coxnet/seed0 \
+  --gpu-id 0 --seed 0 --deterministic
 ```
 
-This config uses RGB/Thermal FPN `start_level=1`, applies sparse OEPC at P3,
-removes all CLFM/DeConv/DWT operations, and keeps the original AAM/HOFM and
-detector. P4-P6 go directly to their same-stage AAM/HOFM blocks.
-
-**Same-stage TRPC, single GPU (seed 0)**
-
-```bash
-python tools/train.py configs/coxnet/trpc/TRPC_same_stage.py --seed 0 --deterministic
-```
-
-**Same-stage control without TRPC**
-
-```bash
-python tools/train.py configs/coxnet/trpc/same_stage_no_trpc.py --seed 0 --deterministic
-```
-
-**TRPC, multi-GPU (e.g., 4 GPUs)**
-
-```bash
-bash tools/dist_train.sh configs/coxnet/trpc/TRPC_same_stage.py 4 --deterministic
-```
-
-**Original COXNet baseline**
-
-```bash
-python tools/train.py configs/coxnet/coxnet_r50_fpn_1x_rgbtdroneperson.py --seed 0 --deterministic
-```
-
-Available configs:
-
-```
-configs/coxnet/
-├── coxnet_r50_fpn_1x_rgbtdroneperson.py
-├── coxnet_star_r50_fpn_1x_rgbtdroneperson.py
-├── coxnet_r50_fpn_1x_vtuav.py
-├── coxnet_star_r50_fpn_1x_vtuav.py
-├── oepc/
-│   ├── OEPC_balanced_core.py
-│   └── OEPC_same_stage.py
-├── prldfc/
-│   ├── PRLDFC.py
-│   ├── PRLDFC_p3.py
-│   └── same_stage_no_calibration.py
-├── topc/
-│   └── TOPC.py
-├── tpsc/
-│   ├── same_stage_control.py
-│   ├── TPSC_core.py
-│   └── TPSC_relation.py
-└── trpc/
-    ├── TRPC.py
-    ├── TRPC_same_stage.py
-    └── same_stage_no_trpc.py
-```
-
----
-
-## Evaluation
+### 5. Evaluate
 
 ```bash
 python tools/test.py \
-    configs/coxnet/tpsc/TPSC_relation.py \
-    /path/to/checkpoint.pth \
-    --eval bbox
+  configs/coxnet/icbfc/ICBFC.py \
+  work_dir/coxmamba/rgbtdroneperson/icbfc/seed0/best_bbox_mAP_50.pth \
+  --eval bbox
 ```
 
-For the strict matched same-stage control without RGB calibration, use
-`configs/coxnet/tpsc/same_stage_control.py`. It has the same RGB/Thermal FPN
-levels and directly feeds both features into AAM/HOFM.
+Replace the checkpoint name with the actual best checkpoint emitted by the
+run; this repository does not currently ship an ICBFC checkpoint.
 
----
+## Repository Map
+
+```text
+configs/coxnet/icbfc/ICBFC.py       # canonical experiment
+mmdet/models/utils/icbfc.py         # prior, DWT, relation, router, reconstruction
+mmdet/models/utils/fusion_strategy.py
+mmdet/models/detectors/fusionnet_xo.py
+tools/misc/smoke_icbfc.py           # real-batch activation/gradient check
+tools/run_icbfc_seeds_gpu0.sh       # fresh sequential 3-seed launcher
+tests/test_models/                   # mechanism and integration regression tests
+docs/ICBFC.md                       # full method and reproducibility note
+```
+
+Prior CLFM-replacement studies are retained for controlled comparison:
+[TPSC](docs/TPSC.md), [PRLDFC](docs/PRLDFC.md), [TOPC](docs/TOPC.md), and
+[TRPC](docs/TRPC.md).
 
 ## Citation
 
-If you find this work useful, please cite:
+ICBFC is an experimental research implementation and does not yet have a
+separate publication citation. Please cite the original COXNet paper when
+using the baseline:
 
 ```bibtex
 @article{peng2025coxnet,
   title={COXNet: Cross-layer fusion with adaptive alignment and scale integration for RGBT tiny object detection},
-  author={Peng, Peiran and Xu, Tingfa and Zhu, Mengqi Zhu and Fang, Yuqiang and Li, Jianan},
+  author={Peng, Peiran and Xu, Tingfa and Song, Liqiang and Zhu, Mengqi and Fang, Yuqiang and Li, Jianan},
   journal={IEEE Transactions on Circuits and Systems for Video Technology},
   year={2025},
   publisher={IEEE}
 }
 ```
 
----
+## License
 
-## Acknowledgement
+Released under the [MIT License](LICENSE).
 
-This work was supported by the Natural Science Foundation of Chongqing, China, under Grant cstc2021jcyj-msxmX1130.
+## Acknowledgements
 
-This codebase is built upon [MMDetection](https://github.com/open-mmlab/mmdetection). We thank the OpenMMLab team for their excellent open-source framework.
+This repository builds on [MMDetection](https://github.com/open-mmlab/mmdetection)
+and the original COXNet implementation. We thank their authors and the
+RGBTDronePerson contributors.
