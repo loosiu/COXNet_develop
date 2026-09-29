@@ -12,6 +12,7 @@ from .topc import (ThermalAnchoredObjectPrototypeCalibration,
 from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
 from .tpsc import (TinyAwarePrototypeSemanticCalibration,
                    build_tpsc_gaussian_targets)
+from .icbfc import ICBFCLevel, ThermalInstancePrior
 
 
 class FusionLayer(nn.Module):
@@ -42,6 +43,8 @@ class FusionLayer(nn.Module):
             prldfc_cfg=None,
             use_tpsc=False,
             tpsc_cfg=None,
+            use_icbfc=False,
+            icbfc_cfg=None,
             usepoolup=['v']):
         super(FusionLayer, self).__init__()
         self.in_channels = in_channels
@@ -63,17 +66,19 @@ class FusionLayer(nn.Module):
         self.use_topc = use_topc
         self.use_prldfc = use_prldfc
         self.use_tpsc = use_tpsc
+        self.use_icbfc = use_icbfc
         active_replacements = (
             int(bool(self.use_trpc)) + int(bool(self.use_oepc)) +
             int(bool(self.use_topc)) + int(bool(self.use_prldfc)) +
-            int(bool(self.use_tpsc)))
+            int(bool(self.use_tpsc)) + int(bool(self.use_icbfc)))
         if active_replacements > 1:
             raise ValueError(
-                'TRPC, OEPC, TOPC, PRLDFC, and TPSC are mutually exclusive')
+                'TRPC, OEPC, TOPC, PRLDFC, TPSC, and ICBFC are mutually '
+                'exclusive')
         if active_replacements and len(use_clfm) != 0:
             raise ValueError(
-                'TRPC/OEPC/TOPC/PRLDFC/TPSC replaces CLFM: set use_clfm=[] '
-                'when enabled')
+                'TRPC/OEPC/TOPC/PRLDFC/TPSC/ICBFC replaces CLFM: set '
+                'use_clfm=[] when enabled')
 
         if 'v2' in self.use_clfm:
             self.idwt_layers = nn.ModuleList()
@@ -275,6 +280,36 @@ class FusionLayer(nn.Module):
                 channels=in_channels, **_tpsc_cfg)
             torch.set_rng_state(cpu_rng_state)
 
+        _icbfc_cfg = dict(icbfc_cfg or {})
+        self.icbfc_aux_loss_weight = float(
+            _icbfc_cfg.pop('aux_loss_weight', 0.1))
+        prior_in_channels = int(
+            _icbfc_cfg.pop('prior_in_channels', in_channels))
+        prior_hidden_channels = int(
+            _icbfc_cfg.pop('prior_hidden_channels', 64))
+        score_threshold = float(
+            _icbfc_cfg.pop('score_threshold', 0.1))
+        candidate_chunk_size = int(
+            _icbfc_cfg.pop('candidate_chunk_size', 256))
+        center_prior = float(_icbfc_cfg.pop('center_prior', 0.01))
+        self.last_icbfc_aux = None
+        if self.use_icbfc:
+            cpu_rng_state = torch.get_rng_state()
+            self.icbfc_prior = ThermalInstancePrior(
+                in_channels=prior_in_channels,
+                hidden_channels=prior_hidden_channels,
+                score_threshold=score_threshold,
+                candidate_chunk_size=candidate_chunk_size,
+                center_prior=center_prior)
+            self.icbfc_layers = nn.ModuleList([
+                ICBFCLevel(
+                    channels=in_channels,
+                    candidate_chunk_size=candidate_chunk_size,
+                    **_icbfc_cfg)
+                for _ in range(num_layers)
+            ])
+            torch.set_rng_state(cpu_rng_state)
+
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
         elif fs_type == 'add':
@@ -311,14 +346,26 @@ class FusionLayer(nn.Module):
         return image_shapes, padded
 
     def forward(self, v_feats, t_feats, gt_bboxes=None, img_metas=None,
-                gt_bboxes_ignore=None):
+                gt_bboxes_ignore=None, thermal_s4=None):
         fused_feats = []
         trpc_aux = {}
         oepc_aux = {}
         topc_aux = {}
         prldfc_aux = {}
         tpsc_aux = None
+        icbfc_prior_aux = None
+        icbfc_aux = {}
         oepc_utility_payload = None
+        icbfc_instances = None
+        if self.use_icbfc:
+            if thermal_s4 is None:
+                raise ValueError(
+                    'ICBFC requires the raw stride-4 Thermal backbone feature')
+            icbfc_instances, icbfc_prior_aux = self.icbfc_prior(
+                thermal_s4,
+                gt_bboxes=gt_bboxes if self.training else None,
+                img_metas=img_metas,
+                return_loss=self.training)
         if self.use_tpsc:
             selected_rgb = tuple(v_feats[level] for level in self.tpsc_levels)
             selected_thermal = tuple(
@@ -378,7 +425,12 @@ class FusionLayer(nn.Module):
                 fused_feats.append(fused_feat)
             
             elif self.fs_type == 'fusionnet-xo':
-                if self.use_trpc:
+                if self.use_icbfc:
+                    v_feat, aux_i = self.icbfc_layers[i](
+                        t_feat, v_feat, icbfc_instances,
+                        img_metas=img_metas, return_aux=True)
+                    icbfc_aux[i] = aux_i
+                elif self.use_trpc:
                     shapes, padded = self._trpc_geometry(img_metas)
                     valid_mask = None if shapes is None else make_padding_mask(
                         shapes, padded, t_feat.shape[-2:], t_feat.device)
@@ -516,6 +568,17 @@ class FusionLayer(nn.Module):
             self.last_tpsc_aux = {
                 key: (value.detach() if torch.is_tensor(value) else value)
                 for key, value in tpsc_aux.items()}
+        if not self.training and self.use_icbfc:
+            self.last_icbfc_aux = dict(
+                prior={
+                    key: (value.detach() if torch.is_tensor(value) else value)
+                    for key, value in icbfc_prior_aux.items()},
+                levels={
+                    i: {
+                        key: (value.detach()
+                              if torch.is_tensor(value) else value)
+                        for key, value in aux.items()}
+                    for i, aux in icbfc_aux.items()})
 
         if self.training:
             aux_losses = {}
@@ -688,6 +751,43 @@ class FusionLayer(nn.Module):
                 aux_losses['loss_tpsc_diversity'] = (
                     self.tpsc_diversity_loss_weight *
                     tpsc_aux['diversity_loss'])
+
+            if self.use_icbfc and icbfc_prior_aux is not None:
+                for key in ('candidate_count', 'candidate_score_mean'):
+                    if key in icbfc_prior_aux:
+                        aux_losses['icbfc_' + key] = (
+                            icbfc_prior_aux[key].detach())
+                monitor_keys = (
+                    'support_ratio', 'overlap_ratio',
+                    'relation_diagonal', 'relation_off_diagonal',
+                    'relation_entropy', 'router_entropy',
+                    'router_active_bands', 'router_variance', 'delta_ratio')
+                for key in monitor_keys:
+                    values = [aux[key] for aux in icbfc_aux.values()
+                              if key in aux]
+                    if values:
+                        aux_losses['icbfc_' + key] = (
+                            sum(values) / len(values)).detach()
+                for band_index, band_name in enumerate(
+                        ('ll', 'lh', 'hl', 'hh')):
+                    values = [aux['router_band_mean'][band_index]
+                              for aux in icbfc_aux.values()
+                              if 'router_band_mean' in aux]
+                    if values:
+                        aux_losses['icbfc_router_' + band_name] = (
+                            sum(values) / len(values)).detach()
+                for level, aux in icbfc_aux.items():
+                    for key in ('candidate_count', 'support_ratio',
+                                'overlap_ratio', 'delta_ratio'):
+                        if key in aux:
+                            aux_losses[
+                                f'icbfc_l{level}_{key}'] = aux[key].detach()
+                for key in ('loss_icbfc_center', 'loss_icbfc_offset',
+                            'loss_icbfc_scale'):
+                    if key in icbfc_prior_aux:
+                        aux_losses[key] = (
+                            self.icbfc_aux_loss_weight *
+                            icbfc_prior_aux[key])
 
             if self.wf_loss:
                 if self.wf_loss_mode == 'kl_v1':

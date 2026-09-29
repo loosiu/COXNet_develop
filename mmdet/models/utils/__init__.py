@@ -7,11 +7,13 @@ from .oepc import ObjectCentricEvidentialCalibration
 from .topc import ThermalAnchoredObjectPrototypeCalibration
 from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
 from .tpsc import TinyAwarePrototypeSemanticCalibration
+from .icbfc import ICBFCLevel, ThermalInstancePrior
 
 __all__ = [
     'ResLayer', 'SimplifiedBasicBlock', 'FusionLayer', 'COXFusionLayer', 'TRPC',
     'ThermalConditionedTRPC', 'ObjectCentricEvidentialCalibration',
     'ThermalAnchoredObjectPrototypeCalibration',
     'PrototypeRoutedLocalDynamicFrequencyCalibration',
-    'TinyAwarePrototypeSemanticCalibration'
+    'TinyAwarePrototypeSemanticCalibration', 'ICBFCLevel',
+    'ThermalInstancePrior'
 ]

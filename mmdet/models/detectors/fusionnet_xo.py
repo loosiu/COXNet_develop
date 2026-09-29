@@ -45,6 +45,8 @@ class FusionNetXO(SingleStageDetector):
                  prldfc_cfg=None,
                  use_tpsc=False,
                  tpsc_cfg=None,
+                 use_icbfc=False,
+                 icbfc_cfg=None,
                 #  usepoolup=['v'],
                  usepoolup=[],
                  train_cfg=None,
@@ -60,6 +62,7 @@ class FusionNetXO(SingleStageDetector):
         self.use_topc = use_topc
         self.use_prldfc = use_prldfc
         self.use_tpsc = use_tpsc
+        self.use_icbfc = use_icbfc
         if neck_t is not None:
             self.neck_t = build_neck(neck_t)
         else:
@@ -91,6 +94,8 @@ class FusionNetXO(SingleStageDetector):
             prldfc_cfg=prldfc_cfg,
             use_tpsc=use_tpsc,
             tpsc_cfg=tpsc_cfg,
+            use_icbfc=use_icbfc,
+            icbfc_cfg=icbfc_cfg,
             usepoolup=usepoolup)
         
         # self.iter = -1
@@ -113,6 +118,7 @@ class FusionNetXO(SingleStageDetector):
         #         save_image(img_tensor, save_path)
         # self.iter += 1
         v_feats, t_feats = self.backbone(v_img, t_img)
+        thermal_s4 = t_feats[0] if self.use_icbfc else None
         if self.with_neck:
             v_feats = self.neck(v_feats)
             t_feats = self.neck_t(t_feats)
@@ -121,14 +127,14 @@ class FusionNetXO(SingleStageDetector):
         
         return self.fuse_layer(
             v_feats, t_feats, gt_bboxes, img_metas,
-            gt_bboxes_ignore=gt_bboxes_ignore)
+            gt_bboxes_ignore=gt_bboxes_ignore, thermal_s4=thermal_s4)
 
     def forward_train(self, img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=None):
         batch_input_shape = tuple(img[0].size()[-2:])
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
         if (self.wf_loss or self.use_trpc or self.use_oepc or self.use_topc or
-                self.use_prldfc or self.use_tpsc):
+                self.use_prldfc or self.use_tpsc or self.use_icbfc):
             out = self.extract_feat(
                 img, gt_bboxes, img_metas,
                 gt_bboxes_ignore=gt_bboxes_ignore)
