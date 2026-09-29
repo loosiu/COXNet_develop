@@ -31,6 +31,15 @@ def _nonzero_finite_gradient(parameters, name):
         raise RuntimeError(f'zero gradient: {name}')
 
 
+def mean_loss_value(value):
+    """Match MMDetection's tensor-or-list loss reduction contract."""
+    if isinstance(value, torch.Tensor):
+        return value.mean()
+    if isinstance(value, list):
+        return sum(item.mean() for item in value)
+    raise TypeError(f'unsupported loss value: {type(value)}')
+
+
 def main():
     args = parse_args()
     if not torch.cuda.is_available():
@@ -39,9 +48,6 @@ def main():
     cfg = Config.fromfile(args.config)
     update_data_root(cfg)
     cfg.model.backbone.init_cfg = None
-    cfg.data.train.pipeline = [
-        transform for transform in cfg.data.train.pipeline
-        if transform.get('type') != 'RandomFlip']
     dataset = build_dataset(cfg.data.train)
     loader = build_dataloader(
         dataset, samples_per_gpu=1, workers_per_gpu=0, num_gpus=1,
@@ -50,18 +56,19 @@ def main():
     batch = None
     for index, candidate in enumerate(loader):
         boxes = candidate['gt_bboxes'].data[0][0]
-        if boxes.numel():
+        if boxes.shape[0] >= 2:
             batch = candidate
             break
-        if index >= 20:
+        if index >= 100:
             break
     if batch is None:
-        raise RuntimeError('no non-empty training sample found in 20 batches')
+        raise RuntimeError(
+            'no multi-instance training sample found in 100 batches')
 
     model = build_detector(cfg.model).cuda().train()
     batch = scatter(batch, [torch.cuda.current_device()])[0]
     losses = model(return_loss=True, **batch)
-    optimized = [value.mean() for key, value in losses.items()
+    optimized = [mean_loss_value(value) for key, value in losses.items()
                  if 'loss' in key]
     if not optimized:
         raise RuntimeError('model returned no optimized loss')
@@ -91,6 +98,8 @@ def main():
     delta_ratio = losses['icbfc_delta_ratio'].detach().item()
     if count <= 0:
         raise RuntimeError('no training instances reached ICBFC')
+    if router_variance <= 0:
+        raise RuntimeError('instance router variance is zero')
     if not 0 < delta_ratio < 0.2:
         raise RuntimeError(f'unsafe delta_ratio: {delta_ratio}')
     print(

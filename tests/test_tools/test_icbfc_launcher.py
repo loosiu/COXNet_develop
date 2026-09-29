@@ -3,8 +3,17 @@ from pathlib import Path
 import subprocess
 import unittest
 
+import torch
+
+from tools.misc.smoke_icbfc import mean_loss_value
+
 
 class TestICBFCLauncher(unittest.TestCase):
+
+    def test_smoke_accepts_tensor_and_list_detector_losses(self):
+        self.assertEqual(mean_loss_value(torch.tensor(2.0)).item(), 2.0)
+        self.assertEqual(mean_loss_value([
+            torch.tensor([1.0, 3.0]), torch.tensor(4.0)]).item(), 6.0)
 
     def test_dry_run_has_three_fresh_ordered_gpu0_commands(self):
         environment = os.environ.copy()
