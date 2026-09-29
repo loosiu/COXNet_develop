@@ -2,6 +2,7 @@ import math
 from typing import Dict, List, Sequence, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
@@ -197,7 +198,8 @@ def extract_instance_candidates(center_logits: torch.Tensor,
         point_offsets = offsets[batch_index, :, ys, xs].transpose(0, 1)
         centers = torch.stack((xs, ys), dim=1).to(offsets.dtype)
         centers = centers + point_offsets
-        scales = log_scales[batch_index, :, ys, xs].transpose(0, 1).exp()
+        scales = log_scales[
+            batch_index, :, ys, xs].transpose(0, 1).clamp(-4, 4).exp()
         scores = probabilities[batch_index, 0, ys, xs]
         chunk_ranges = [
             (start, min(start + chunk_size, positions.shape[0]))
@@ -211,3 +213,181 @@ def extract_instance_candidates(center_logits: torch.Tensor,
             scores=scores,
             chunks=chunks))
     return results
+
+
+def _center_focal_loss(logits: torch.Tensor, target: torch.Tensor,
+                       valid_mask: torch.Tensor) -> torch.Tensor:
+    probabilities = logits.sigmoid().clamp(min=1e-6, max=1 - 1e-6)
+    positive = (target == 1) & valid_mask
+    negative = (target < 1) & valid_mask
+    negative_weight = (1 - target).pow(4)
+    positive_loss = -torch.log(probabilities) * (1 - probabilities).pow(2)
+    negative_loss = (-torch.log(1 - probabilities) * probabilities.pow(2) *
+                     negative_weight)
+    normalizer = positive.sum().clamp(min=1).to(logits.dtype)
+    return ((positive_loss * positive).sum() +
+            (negative_loss * negative).sum()) / normalizer
+
+
+class ThermalInstancePrior(nn.Module):
+    """Predict a stride-4 Thermal center prior and materialize instances."""
+
+    def __init__(self,
+                 in_channels: int,
+                 hidden_channels: int = 64,
+                 score_threshold: float = 0.1,
+                 candidate_chunk_size: int = 256,
+                 center_prior: float = 0.01):
+        super().__init__()
+        if in_channels <= 0 or hidden_channels <= 0:
+            raise ValueError('channel counts must be positive')
+        if not 0 < center_prior < 1:
+            raise ValueError('center_prior must be in (0, 1)')
+        groups = math.gcd(hidden_channels, 8)
+        self.stem = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, 3, padding=1, bias=False),
+            nn.GroupNorm(groups, hidden_channels),
+            nn.ReLU(inplace=True))
+        self.center_head = nn.Conv2d(hidden_channels, 1, 1)
+        self.offset_head = nn.Conv2d(hidden_channels, 2, 1)
+        self.scale_head = nn.Conv2d(hidden_channels, 2, 1)
+        self.score_threshold = float(score_threshold)
+        self.candidate_chunk_size = int(candidate_chunk_size)
+        self._initialize(center_prior)
+
+    def _initialize(self, center_prior: float) -> None:
+        nn.init.kaiming_normal_(
+            self.stem[0].weight, mode='fan_out', nonlinearity='relu')
+        for head in (self.center_head, self.offset_head, self.scale_head):
+            nn.init.normal_(head.weight, std=1e-3)
+            nn.init.zeros_(head.bias)
+        center_bias = math.log(center_prior / (1 - center_prior))
+        nn.init.constant_(self.center_head.bias, center_bias)
+
+    def _gt_instances(self, gt_bboxes: Sequence[torch.Tensor],
+                      img_metas: Sequence[dict],
+                      output_size: Tuple[int, int],
+                      device: torch.device,
+                      dtype: torch.dtype) -> List[Dict[str, torch.Tensor]]:
+        out_h, out_w = output_size
+        instances = []
+        for batch_index, (boxes, meta) in enumerate(zip(gt_bboxes, img_metas)):
+            pad_h, pad_w = tuple(meta.get(
+                'batch_input_shape', meta['pad_shape'][:2]))[:2]
+            scale_x = out_w / float(pad_w)
+            scale_y = out_h / float(pad_h)
+            boxes = boxes.to(device=device, dtype=dtype)
+            if boxes.numel() == 0:
+                centers = boxes.new_empty((0, 2))
+                scales = boxes.new_empty((0, 2))
+            else:
+                centers = torch.stack((
+                    0.5 * (boxes[:, 0] + boxes[:, 2]) * scale_x,
+                    0.5 * (boxes[:, 1] + boxes[:, 3]) * scale_y,
+                ), dim=1)
+                scales = torch.stack((
+                    (boxes[:, 2] - boxes[:, 0]).clamp(min=1e-6) * scale_x,
+                    (boxes[:, 3] - boxes[:, 1]).clamp(min=1e-6) * scale_y,
+                ), dim=1)
+                valid = ((centers[:, 0] >= 0) & (centers[:, 0] < out_w) &
+                         (centers[:, 1] >= 0) & (centers[:, 1] < out_h))
+                centers, scales = centers[valid], scales[valid]
+            count = centers.shape[0]
+            instances.append(dict(
+                centers=centers,
+                scales=scales,
+                scores=torch.ones(count, device=device, dtype=dtype),
+                batch_index=torch.full(
+                    (count,), batch_index, device=device, dtype=torch.long),
+                chunks=torch.tensor(
+                    [(start, min(start + self.candidate_chunk_size, count))
+                     for start in range(0, count,
+                                        self.candidate_chunk_size)],
+                    device=device, dtype=torch.long).reshape(-1, 2)))
+        return instances
+
+    @staticmethod
+    def _masked_regression_loss(prediction: torch.Tensor,
+                                target: torch.Tensor,
+                                mask: torch.Tensor,
+                                smooth: bool = False) -> torch.Tensor:
+        expanded_mask = mask.expand_as(prediction)
+        if smooth:
+            element_loss = F.smooth_l1_loss(
+                prediction, target, reduction='none')
+        else:
+            element_loss = F.l1_loss(prediction, target, reduction='none')
+        normalizer = expanded_mask.sum().clamp(min=1).to(prediction.dtype)
+        return (element_loss * expanded_mask).sum() / normalizer
+
+    def forward(self,
+                thermal_s4: torch.Tensor,
+                gt_bboxes: Sequence[torch.Tensor] = None,
+                img_metas: Sequence[dict] = None,
+                return_loss: bool = False
+                ) -> Tuple[List[Dict[str, torch.Tensor]],
+                           Dict[str, torch.Tensor]]:
+        if thermal_s4.ndim != 4:
+            raise ValueError('thermal_s4 must be a BCHW tensor')
+        batch_size, _, height, width = thermal_s4.shape
+        if img_metas is None:
+            img_metas = [dict(
+                img_shape=(height, width, 1),
+                pad_shape=(height, width, 1),
+                batch_input_shape=(height, width)) for _ in range(batch_size)]
+        if len(img_metas) != batch_size:
+            raise ValueError('img_metas must match the batch size')
+
+        hidden = self.stem(thermal_s4)
+        center_logits = self.center_head(hidden)
+        offsets = self.offset_head(hidden)
+        log_scales = self.scale_head(hidden)
+        valid_mask = _valid_mask(
+            img_metas, (height, width), thermal_s4.device)
+        aux = dict(
+            center_logits=center_logits,
+            offsets=offsets,
+            log_scales=log_scales,
+            valid_mask=valid_mask)
+
+        if gt_bboxes is not None:
+            if len(gt_bboxes) != batch_size:
+                raise ValueError('gt_bboxes must match the batch size')
+            instances = self._gt_instances(
+                gt_bboxes, img_metas, (height, width), thermal_s4.device,
+                thermal_s4.dtype)
+        else:
+            instances = extract_instance_candidates(
+                center_logits, offsets, log_scales, valid_mask,
+                score_threshold=self.score_threshold,
+                chunk_size=self.candidate_chunk_size)
+            for batch_index, candidate in enumerate(instances):
+                candidate['batch_index'] = torch.full(
+                    (candidate['centers'].shape[0],), batch_index,
+                    device=thermal_s4.device, dtype=torch.long)
+
+        counts = center_logits.new_tensor(
+            [instance['centers'].shape[0] for instance in instances])
+        aux['candidate_count'] = counts.mean()
+        score_values = [
+            instance['scores'] for instance in instances
+            if instance['scores'].numel()
+        ]
+        aux['candidate_score_mean'] = (
+            torch.cat(score_values).mean() if score_values else
+            center_logits.new_zeros(()))
+
+        if return_loss:
+            if gt_bboxes is None:
+                raise ValueError('gt_bboxes are required when return_loss=True')
+            targets = build_instance_targets(
+                gt_bboxes, img_metas, (height, width), thermal_s4.device,
+                thermal_s4.dtype)
+            aux['loss_icbfc_center'] = _center_focal_loss(
+                center_logits, targets['center'], targets['valid_mask'])
+            aux['loss_icbfc_offset'] = self._masked_regression_loss(
+                offsets, targets['offset'], targets['regression_mask'])
+            aux['loss_icbfc_scale'] = self._masked_regression_loss(
+                log_scales, targets['log_scale'],
+                targets['regression_mask'], smooth=True)
+        return instances, aux

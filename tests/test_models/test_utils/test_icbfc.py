@@ -3,8 +3,8 @@ import unittest
 import torch
 
 from mmdet.models.utils.icbfc import (
-    build_instance_targets, extract_instance_candidates, haar_dwt,
-    haar_idwt, sparsemax)
+    ThermalInstancePrior, build_instance_targets,
+    extract_instance_candidates, haar_dwt, haar_idwt, sparsemax)
 
 
 class TestICBFCPrimitives(unittest.TestCase):
@@ -109,6 +109,117 @@ class TestICBFCPrimitives(unittest.TestCase):
             self.assertEqual(candidate['scales'].shape, (0, 2))
             self.assertEqual(candidate['scores'].shape, (0,))
             self.assertEqual(candidate['chunks'].shape, (0, 2))
+
+
+class TestThermalInstancePrior(unittest.TestCase):
+
+    @staticmethod
+    def _metas():
+        return [dict(
+            img_shape=(64, 64, 3),
+            pad_shape=(64, 64, 3),
+            batch_input_shape=(64, 64))]
+
+    def test_training_prior_uses_every_gt_instance_and_returns_three_losses(self):
+        torch.manual_seed(1)
+        prior = ThermalInstancePrior(in_channels=8, hidden_channels=8)
+        prior.train()
+        thermal = torch.randn(1, 8, 16, 16)
+        boxes = [torch.tensor([
+            [8.0, 8.0, 12.0, 12.0],
+            [12.0, 8.0, 16.0, 12.0],
+        ])]
+
+        instances, aux = prior(
+            thermal, boxes, self._metas(), return_loss=True)
+
+        self.assertEqual(instances[0]['centers'].shape, (2, 2))
+        torch.testing.assert_close(
+            instances[0]['centers'],
+            torch.tensor([[2.5, 2.5], [3.5, 2.5]]))
+        self.assertEqual(
+            {key for key in aux if key.startswith('loss_icbfc_')},
+            {'loss_icbfc_center', 'loss_icbfc_offset',
+             'loss_icbfc_scale'})
+        self.assertTrue(all(torch.isfinite(aux[key]) for key in (
+            'loss_icbfc_center', 'loss_icbfc_offset',
+            'loss_icbfc_scale')))
+
+    def test_empty_gt_prior_losses_are_finite(self):
+        prior = ThermalInstancePrior(in_channels=8, hidden_channels=8)
+        prior.train()
+
+        instances, aux = prior(
+            torch.randn(1, 8, 16, 16),
+            [torch.empty(0, 4)], self._metas(), return_loss=True)
+
+        self.assertEqual(instances[0]['centers'].shape, (0, 2))
+        for key in ('loss_icbfc_center', 'loss_icbfc_offset',
+                    'loss_icbfc_scale'):
+            self.assertTrue(torch.isfinite(aux[key]))
+
+    def test_prior_predictions_exclude_padding(self):
+        prior = ThermalInstancePrior(
+            in_channels=8, hidden_channels=8, score_threshold=0.5)
+        prior.eval()
+        torch.nn.init.zeros_(prior.center_head.weight)
+        torch.nn.init.constant_(prior.center_head.bias, 10.0)
+        metas = [dict(
+            img_shape=(32, 48, 3),
+            pad_shape=(64, 64, 3),
+            batch_input_shape=(64, 64))]
+
+        instances, _ = prior(torch.zeros(1, 8, 16, 16), img_metas=metas)
+
+        self.assertGreater(instances[0]['centers'].shape[0], 0)
+        self.assertTrue((instances[0]['centers'][:, 0] < 12).all())
+        self.assertTrue((instances[0]['centers'][:, 1] < 8).all())
+
+    def test_center_offset_and_scale_parameters_receive_nonzero_gradients(self):
+        torch.manual_seed(2)
+        prior = ThermalInstancePrior(in_channels=8, hidden_channels=8)
+        prior.train()
+        boxes = [torch.tensor([[8.0, 8.0, 20.0, 24.0]])]
+
+        _, aux = prior(
+            torch.randn(1, 8, 16, 16), boxes, self._metas(),
+            return_loss=True)
+        loss = sum(aux[key] for key in (
+            'loss_icbfc_center', 'loss_icbfc_offset',
+            'loss_icbfc_scale'))
+        loss.backward()
+
+        for head_name in ('center_head', 'offset_head', 'scale_head'):
+            gradients = [
+                parameter.grad
+                for parameter in getattr(prior, head_name).parameters()
+            ]
+            self.assertTrue(all(gradient is not None for gradient in gradients))
+            self.assertGreater(
+                sum(gradient.abs().sum().item() for gradient in gradients),
+                0.0)
+
+    def test_inference_prior_returns_variable_candidate_counts(self):
+        prior = ThermalInstancePrior(
+            in_channels=8, hidden_channels=8, score_threshold=0.5)
+        prior.eval()
+        torch.nn.init.zeros_(prior.center_head.weight)
+        torch.nn.init.constant_(prior.center_head.bias, 10.0)
+        metas = [
+            dict(
+                img_shape=(64, 64, 3), pad_shape=(64, 64, 3),
+                batch_input_shape=(64, 64)),
+            dict(
+                img_shape=(32, 32, 3), pad_shape=(64, 64, 3),
+                batch_input_shape=(64, 64)),
+        ]
+
+        instances, _ = prior(torch.zeros(2, 8, 16, 16), img_metas=metas)
+
+        self.assertEqual(instances[0]['centers'].shape[0], 256)
+        self.assertEqual(instances[1]['centers'].shape[0], 64)
+        self.assertTrue((instances[0]['batch_index'] == 0).all())
+        self.assertTrue((instances[1]['batch_index'] == 1).all())
 
 
 if __name__ == '__main__':
