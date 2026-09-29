@@ -10,6 +10,8 @@ from .oepc import ObjectCentricEvidentialCalibration, build_center_targets
 from .topc import (ThermalAnchoredObjectPrototypeCalibration,
                    build_topc_gaussian_targets)
 from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
+from .tpsc import (TinyAwarePrototypeSemanticCalibration,
+                   build_tpsc_gaussian_targets)
 
 
 class FusionLayer(nn.Module):
@@ -38,6 +40,8 @@ class FusionLayer(nn.Module):
             topc_cfg=None,
             use_prldfc=False,
             prldfc_cfg=None,
+            use_tpsc=False,
+            tpsc_cfg=None,
             usepoolup=['v']):
         super(FusionLayer, self).__init__()
         self.in_channels = in_channels
@@ -58,15 +62,17 @@ class FusionLayer(nn.Module):
         self.use_oepc = use_oepc
         self.use_topc = use_topc
         self.use_prldfc = use_prldfc
+        self.use_tpsc = use_tpsc
         active_replacements = (
             int(bool(self.use_trpc)) + int(bool(self.use_oepc)) +
-            int(bool(self.use_topc)) + int(bool(self.use_prldfc)))
+            int(bool(self.use_topc)) + int(bool(self.use_prldfc)) +
+            int(bool(self.use_tpsc)))
         if active_replacements > 1:
             raise ValueError(
-                'TRPC, OEPC, TOPC, and PRLDFC are mutually exclusive')
+                'TRPC, OEPC, TOPC, PRLDFC, and TPSC are mutually exclusive')
         if active_replacements and len(use_clfm) != 0:
             raise ValueError(
-                'TRPC/OEPC/TOPC/PRLDFC replaces CLFM: set use_clfm=[] '
+                'TRPC/OEPC/TOPC/PRLDFC/TPSC replaces CLFM: set use_clfm=[] '
                 'when enabled')
 
         if 'v2' in self.use_clfm:
@@ -248,6 +254,27 @@ class FusionLayer(nn.Module):
                         **_prldfc_cfg))
             torch.set_rng_state(cpu_rng_state)
 
+        self.tpsc_levels = ()
+        self.last_tpsc_aux = None
+        if self.use_tpsc:
+            _tpsc_cfg = dict(tpsc_cfg or {})
+            self.tpsc_levels = tuple(int(level) for level in _tpsc_cfg.pop(
+                'apply_levels', (0, 1)))
+            if (len(self.tpsc_levels) != 2 or
+                    len(set(self.tpsc_levels)) != 2 or
+                    any(level < 0 or level >= num_layers
+                        for level in self.tpsc_levels)):
+                raise ValueError(
+                    'TPSC apply_levels must contain two distinct valid levels')
+            self.tpsc_coverage_loss_weight = float(
+                _tpsc_cfg.pop('coverage_loss_weight', 0.05))
+            self.tpsc_diversity_loss_weight = float(
+                _tpsc_cfg.pop('diversity_loss_weight', 0.01))
+            cpu_rng_state = torch.get_rng_state()
+            self.tpsc = TinyAwarePrototypeSemanticCalibration(
+                channels=in_channels, **_tpsc_cfg)
+            torch.set_rng_state(cpu_rng_state)
+
         if fs_type == 'cat' or fs_type == 'clfm':
             self.conv = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1)
         elif fs_type == 'add':
@@ -290,7 +317,50 @@ class FusionLayer(nn.Module):
         oepc_aux = {}
         topc_aux = {}
         prldfc_aux = {}
+        tpsc_aux = None
         oepc_utility_payload = None
+        if self.use_tpsc:
+            selected_rgb = tuple(v_feats[level] for level in self.tpsc_levels)
+            selected_thermal = tuple(
+                t_feats[level] for level in self.tpsc_levels)
+            for offset, (rgb, thermal) in enumerate(zip(
+                    selected_rgb, selected_thermal)):
+                if tuple(rgb.shape) != tuple(thermal.shape):
+                    raise ValueError(
+                        'TPSC is a same-stage CLFM replacement and requires '
+                        'equal RGB/Thermal feature shapes, got {} and {} at '
+                        'selected level {}'.format(
+                            tuple(rgb.shape), tuple(thermal.shape), offset))
+            shapes, padded = self._trpc_geometry(img_metas)
+            valid_masks = None
+            coverage_targets = None
+            if shapes is not None:
+                valid_masks = []
+                coverage_targets = [] if (
+                    self.training and gt_bboxes is not None) else None
+                for thermal in selected_thermal:
+                    if self.training and gt_bboxes_ignore is not None:
+                        _, valid = build_box_targets(
+                            gt_bboxes, shapes, padded, thermal.shape[-2:],
+                            thermal.device, ignore_boxes=gt_bboxes_ignore)
+                    else:
+                        valid = make_padding_mask(
+                            shapes, padded, thermal.shape[-2:], thermal.device)
+                    valid_masks.append(valid)
+                    if coverage_targets is not None:
+                        coverage_targets.append(build_tpsc_gaussian_targets(
+                            gt_bboxes, padded, thermal.shape[-2:],
+                            thermal.device, valid_mask=valid))
+                valid_masks = tuple(valid_masks)
+                if coverage_targets is not None:
+                    coverage_targets = tuple(coverage_targets)
+            calibrated, tpsc_aux = self.tpsc(
+                selected_rgb, selected_thermal, valid_masks=valid_masks,
+                coverage_targets=coverage_targets, return_aux=True)
+            v_feats = list(v_feats)
+            for level, feature in zip(self.tpsc_levels, calibrated):
+                v_feats[level] = feature
+
         for i in range(self.num_layers):
             v_feat = v_feats[i]
             t_feat = t_feats[i]
@@ -442,6 +512,10 @@ class FusionLayer(nn.Module):
                 i: {key: (value.detach() if torch.is_tensor(value) else value)
                     for key, value in aux.items()}
                 for i, aux in prldfc_aux.items()}
+        if not self.training and tpsc_aux is not None:
+            self.last_tpsc_aux = {
+                key: (value.detach() if torch.is_tensor(value) else value)
+                for key, value in tpsc_aux.items()}
 
         if self.training:
             aux_losses = {}
@@ -593,6 +667,27 @@ class FusionLayer(nn.Module):
                     values = [aux[source] for aux in prldfc_aux.values()]
                     aux_losses[destination] = (
                         weight * sum(values) / len(values))
+
+            if self.use_tpsc and tpsc_aux is not None:
+                monitor_keys = (
+                    'attention_entropy_rgb', 'attention_entropy_thermal',
+                    'prototype_pairwise_cosine',
+                    'prototype_effective_rank', 'proto_cos_before',
+                    'proto_cos_after', 'cross_modal_attention_mass',
+                    'cross_scale_attention_mass',
+                    'channel_scale_abs_mean', 'channel_scale_abs_max',
+                    'modulation_ratio', 'grad_norm_rgb_projection',
+                    'grad_norm_thermal_projection', 'grad_norm_relation',
+                    'grad_norm_conditioner', 'grad_norm_modulation')
+                for key in monitor_keys:
+                    if key in tpsc_aux:
+                        aux_losses['tpsc_' + key] = tpsc_aux[key].detach()
+                aux_losses['loss_tpsc_coverage'] = (
+                    self.tpsc_coverage_loss_weight *
+                    tpsc_aux['coverage_loss'])
+                aux_losses['loss_tpsc_diversity'] = (
+                    self.tpsc_diversity_loss_weight *
+                    tpsc_aux['diversity_loss'])
 
             if self.wf_loss:
                 if self.wf_loss_mode == 'kl_v1':

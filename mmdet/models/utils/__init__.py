@@ -6,10 +6,12 @@ from .trpc import TRPC, ThermalConditionedTRPC
 from .oepc import ObjectCentricEvidentialCalibration
 from .topc import ThermalAnchoredObjectPrototypeCalibration
 from .prldfc import PrototypeRoutedLocalDynamicFrequencyCalibration
+from .tpsc import TinyAwarePrototypeSemanticCalibration
 
 __all__ = [
     'ResLayer', 'SimplifiedBasicBlock', 'FusionLayer', 'COXFusionLayer', 'TRPC',
     'ThermalConditionedTRPC', 'ObjectCentricEvidentialCalibration',
     'ThermalAnchoredObjectPrototypeCalibration',
-    'PrototypeRoutedLocalDynamicFrequencyCalibration'
+    'PrototypeRoutedLocalDynamicFrequencyCalibration',
+    'TinyAwarePrototypeSemanticCalibration'
 ]

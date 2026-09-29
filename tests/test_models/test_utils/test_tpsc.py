@@ -1,5 +1,9 @@
 import torch
+import torch.nn as nn
+from mmcv import Config
 
+from mmdet.models.detectors.fusionnet_xo import FusionNetXO
+from mmdet.models.utils.fusion_strategy import FusionLayer
 from mmdet.models.utils.tpsc import (
     PrototypeRelationBlock,
     SharedSlotPrototypeExtractor,
@@ -389,3 +393,196 @@ def test_tpsc_rejects_wrong_level_count_and_modality_shape_mismatch():
             assert 'level' in str(error).lower() or 'shape' in str(error).lower()
         else:
             raise AssertionError('TPSC accepted invalid feature levels')
+
+
+class _CaptureTPSCFusion(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.rgb_inputs = []
+        self.thermal_inputs = []
+
+    def forward(self, rgb, thermal):
+        self.rgb_inputs.append(rgb.detach().clone())
+        self.thermal_inputs.append(thermal.detach().clone())
+        return rgb + thermal
+
+
+def _tpsc_fusion_layer(**kwargs):
+    defaults = dict(
+        in_channels=8, reduction=4, num_layers=4,
+        fs_type='fusionnet-xo', use_clfm=[], use_trpc=False,
+        use_oepc=False, use_topc=False, use_prldfc=False, use_tpsc=True,
+        tpsc_cfg=dict(
+            apply_levels=(0, 1), prototype_dim=4, num_slots=2,
+            num_heads=2, relation_depth=1, modulation_bound=0.1,
+            init_std=1e-2, use_relation=True,
+            coverage_loss_weight=0.05, diversity_loss_weight=0.01),
+        usepoolup=[])
+    defaults.update(kwargs)
+    return FusionLayer(**defaults)
+
+
+def test_fusion_layer_rejects_tpsc_with_any_other_clfm_replacement():
+    conflicts = (
+        dict(use_clfm=['v3']),
+        dict(use_trpc=True),
+        dict(use_oepc=True),
+        dict(use_topc=True),
+        dict(use_prldfc=True),
+    )
+    for conflicting in conflicts:
+        try:
+            _tpsc_fusion_layer(**conflicting)
+        except ValueError as error:
+            assert ('mutually exclusive' in str(error) or
+                    'replaces CLFM' in str(error))
+        else:
+            raise AssertionError('TPSC accepted a conflicting fusion path')
+
+
+def test_fusion_layer_tpsc_calibrates_p3_p4_before_hofm_and_preserves_thermal_values():
+    layer = _tpsc_fusion_layer()
+    captures = nn.ModuleList([_CaptureTPSCFusion() for _ in range(4)])
+    layer.hofm_layers = captures
+    layer.eval()
+    visible = [
+        torch.randn(1, 8, 8, 10), torch.randn(1, 8, 4, 5),
+        torch.randn(1, 8, 2, 3), torch.randn(1, 8, 1, 2)]
+    thermal = [torch.randn_like(feature) for feature in visible]
+    thermal_before = [feature.clone() for feature in thermal]
+
+    outputs = layer(visible, thermal)
+
+    assert len(outputs) == 4
+    assert not torch.equal(captures[0].rgb_inputs[0], visible[0])
+    assert not torch.equal(captures[1].rgb_inputs[0], visible[1])
+    assert torch.equal(captures[2].rgb_inputs[0], visible[2])
+    assert torch.equal(captures[3].rgb_inputs[0], visible[3])
+    for capture, before, after in zip(captures, thermal_before, thermal):
+        assert torch.equal(capture.thermal_inputs[0], before)
+        assert torch.equal(after, before)
+
+
+def test_fusion_layer_tpsc_builds_level_targets_and_weighted_losses():
+    layer = _tpsc_fusion_layer()
+    layer.hofm_layers = nn.ModuleList(
+        [_CaptureTPSCFusion() for _ in range(4)])
+    observed = {}
+    handle = layer.tpsc.register_forward_hook(
+        lambda _module, _inputs, output: observed.update(output[1]))
+    layer.train()
+    visible = [
+        torch.randn(1, 8, 8, 10), torch.randn(1, 8, 4, 5),
+        torch.randn(1, 8, 2, 3), torch.randn(1, 8, 1, 2)]
+    thermal = [torch.randn_like(feature) for feature in visible]
+    boxes = [torch.tensor([[8.0, 8.0, 18.0, 20.0]])]
+    metas = [dict(
+        img_shape=(48, 64, 3), pad_shape=(64, 80, 3),
+        batch_input_shape=(64, 80))]
+
+    _, aux = layer(visible, thermal, gt_bboxes=boxes, img_metas=metas)
+    handle.remove()
+
+    assert torch.allclose(
+        aux['loss_tpsc_coverage'], 0.05 * observed['coverage_loss'])
+    assert torch.allclose(
+        aux['loss_tpsc_diversity'], 0.01 * observed['diversity_loss'])
+    assert 'tpsc_modulation_ratio' in aux
+    assert 'tpsc_grad_norm_modulation' in aux
+
+
+def test_fusion_layer_tpsc_inference_receives_padding_masks_and_sets_last_aux():
+    layer = _tpsc_fusion_layer()
+    layer.hofm_layers = nn.ModuleList(
+        [_CaptureTPSCFusion() for _ in range(4)])
+    masks = []
+    handles = [extractor.register_forward_hook(
+        lambda _module, inputs, _output: masks.append(inputs[2].detach()))
+        for extractor in layer.tpsc.slot_extractors]
+    layer.eval()
+    visible = [
+        torch.randn(1, 8, 8, 10), torch.randn(1, 8, 4, 5),
+        torch.randn(1, 8, 2, 3), torch.randn(1, 8, 1, 2)]
+    thermal = [torch.randn_like(feature) for feature in visible]
+    metas = [dict(
+        img_shape=(48, 64, 3), pad_shape=(64, 80, 3),
+        batch_input_shape=(64, 80))]
+
+    layer(visible, thermal, img_metas=metas)
+    for handle in handles:
+        handle.remove()
+
+    assert len(masks) == 2
+    assert not masks[0][:, :, 6:].any()
+    assert not masks[0][:, :, :, 8:].any()
+    assert layer.last_tpsc_aux is not None
+    assert not layer.last_tpsc_aux['modulation_ratio'].requires_grad
+
+
+def test_fusionnet_xo_forwards_tpsc_flags_and_enters_aux_train_path():
+    class RecordingHead:
+
+        def forward_train(self, features, *args):
+            self.features = features
+            return {'loss_detector': torch.tensor(1.0)}
+
+    class RecordingDetector:
+        wf_loss = False
+        use_trpc = False
+        use_oepc = False
+        use_topc = False
+        use_prldfc = False
+        use_tpsc = True
+
+        def __init__(self):
+            self.bbox_head = RecordingHead()
+            self.extract_args = None
+
+        def extract_feat(self, img, *args, **kwargs):
+            self.extract_args = (args, kwargs)
+            return ['p3', 'p4'], {'loss_tpsc_coverage': torch.tensor(0.5)}
+
+    detector = RecordingDetector()
+    images = (torch.randn(1, 3, 16, 16), torch.randn(1, 3, 16, 16))
+    metas = [dict(img_shape=(16, 16, 3), pad_shape=(16, 16, 3))]
+    boxes = [torch.tensor([[2.0, 2.0, 8.0, 8.0]])]
+    labels = [torch.tensor([0])]
+
+    losses = FusionNetXO.forward_train(
+        detector, images, metas, boxes, labels)
+
+    assert detector.extract_args == (
+        (boxes, metas), {'gt_bboxes_ignore': None})
+    assert detector.bbox_head.features == ['p3', 'p4']
+    assert set(losses) == {'loss_detector', 'loss_tpsc_coverage'}
+
+
+def test_tpsc_configs_define_matched_control_core_and_relation_contracts():
+    paths = (
+        'configs/coxnet/tpsc/same_stage_control.py',
+        'configs/coxnet/tpsc/TPSC_core.py',
+        'configs/coxnet/tpsc/TPSC_relation.py')
+    control, core, relation = [Config.fromfile(path) for path in paths]
+
+    assert len({config.work_dir for config in (control, core, relation)}) == 3
+    for config in (control, core, relation):
+        model = config.model
+        assert model.neck.start_level == model.neck_t.start_level == 1
+        assert model.use_clfm == []
+        for legacy in ('use_trpc', 'use_oepc', 'use_topc', 'use_prldfc'):
+            assert model[legacy] is False
+        assert model.wf_loss is True
+        assert model.wf_loss_mode == 'kl_v2'
+        assert model.wf_loss_weight == 0.1
+    assert control.model.use_tpsc is False
+    for config, use_relation in ((core, False), (relation, True)):
+        model = config.model
+        assert model.use_tpsc is True
+        expected = dict(
+            apply_levels=(0, 1), prototype_dim=64, num_slots=8,
+            num_heads=4, relation_depth=1, modulation_bound=0.1,
+            init_std=1e-2, use_relation=use_relation,
+            coverage_loss_weight=0.05, diversity_loss_weight=0.01)
+        for key, value in expected.items():
+            assert model.tpsc_cfg[key] == value

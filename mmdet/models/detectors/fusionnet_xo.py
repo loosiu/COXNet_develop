@@ -43,6 +43,8 @@ class FusionNetXO(SingleStageDetector):
                  topc_cfg=None,
                  use_prldfc=False,
                  prldfc_cfg=None,
+                 use_tpsc=False,
+                 tpsc_cfg=None,
                 #  usepoolup=['v'],
                  usepoolup=[],
                  train_cfg=None,
@@ -57,6 +59,7 @@ class FusionNetXO(SingleStageDetector):
         self.use_oepc = use_oepc
         self.use_topc = use_topc
         self.use_prldfc = use_prldfc
+        self.use_tpsc = use_tpsc
         if neck_t is not None:
             self.neck_t = build_neck(neck_t)
         else:
@@ -86,6 +89,8 @@ class FusionNetXO(SingleStageDetector):
             topc_cfg=topc_cfg,
             use_prldfc=use_prldfc,
             prldfc_cfg=prldfc_cfg,
+            use_tpsc=use_tpsc,
+            tpsc_cfg=tpsc_cfg,
             usepoolup=usepoolup)
         
         # self.iter = -1
@@ -123,7 +128,7 @@ class FusionNetXO(SingleStageDetector):
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
         if (self.wf_loss or self.use_trpc or self.use_oepc or self.use_topc or
-                self.use_prldfc):
+                self.use_prldfc or self.use_tpsc):
             out = self.extract_feat(
                 img, gt_bboxes, img_metas,
                 gt_bboxes_ignore=gt_bboxes_ignore)
