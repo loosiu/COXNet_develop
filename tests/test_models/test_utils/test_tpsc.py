@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from mmcv import Config
+from pathlib import Path
 
 from mmdet.models.detectors.fusionnet_xo import FusionNetXO
 from mmdet.models.utils.fusion_strategy import FusionLayer
@@ -586,3 +587,21 @@ def test_tpsc_configs_define_matched_control_core_and_relation_contracts():
             coverage_loss_weight=0.05, diversity_loss_weight=0.01)
         for key, value in expected.items():
             assert model.tpsc_cfg[key] == value
+
+
+def test_tpsc_documentation_and_canonical_config_exclude_forbidden_mechanisms():
+    readme = Path('README.md').read_text()
+    method_path = Path('docs/TPSC.md')
+    assert method_path.is_file()
+    method = method_path.read_text()
+    assert 'TPSC' in readme
+    assert 'docs/TPSC.md' in readme
+    assert 'performance improvement' not in method.lower()
+
+    canonical = Config.fromfile(
+        'configs/coxnet/tpsc/TPSC_relation.py').model.tpsc_cfg
+    forbidden = (
+        'candidate', 'topk', 'top_k', 'frequency', 'fft', 'dwt',
+        'teacher', 'edl', 'warp', 'offset', 'gate')
+    assert not any(any(token in key.lower() for token in forbidden)
+                   for key in canonical)

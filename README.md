@@ -1,4 +1,4 @@
-# COXNet CLFM Replacements: TOPC, OEPC, and TRPC
+# COXNet CLFM Replacements: TPSC and Prior Experiments
 
 **IEEE Transactions on Circuits and Systems for Video Technology**, Vol. 36, No. 1, January 2026
 
@@ -14,50 +14,44 @@ COXNet is an RGBT tiny object detection framework that jointly addresses cross-m
 
 This repository studies complete replacements for COXNet's CLFM while keeping
 the original AAM/HOFM, DSR/MSF, detector head, assignment, and training recipe.
-The current experimental method is **PRLDFC (Prototype-Routed Local Dynamic
-Frequency Calibration)**. RGB and Thermal FPNs both start at level 1 and
-produce equal-stride P3/P4/P5/P6 features. Dense Thermal P3/P4 seeds condition
-object-specific low/mid/high-frequency routing and Thermal reliability. Dense
-band features provide the correction content; prototypes only route it. The
-bounded residual calibrates RGB while Thermal is passed unchanged to AAM/HOFM.
+The current experimental method is **TPSC (Tiny-aware Prototype Semantic
+Calibration)**. RGB and Thermal FPNs both start at level 1. Detail-preserving
+P3/P4 descriptors produce shared semantic slots; same-slot cross-modal
+conditioning and an optional compact relation block predict bounded channel
+scales for RGB P3/P4 only. Original Thermal values and P5/P6 enter AAM/HOFM
+unchanged.
 
-PRLDFC contains no cross-stage pairing, DeConv, DWT/IDWT, hard top-k candidate
-quota, peak NMS, EDL, contrastive loss, detector utility router, or feature
-warp. P5/P6 go directly to same-stage AAM/HOFM. Legacy TOPC, OEPC, and TRPC
-remain available for controlled comparisons and reproducibility. See
-[the PRLDFC method note](docs/PRLDFC.md),
-[the design](docs/superpowers/specs/2026-09-28-prldfc-design.md),
-[the implementation plan](docs/superpowers/plans/2026-09-28-prldfc-implementation.md),
-and [the TOPC method note](docs/TOPC.md).
+TPSC contains no cross-stage pairing, DeConv, DWT/IDWT, spatial candidates,
+hard top-k quota, local correspondence search, EDL, teacher model, or feature
+warp. Legacy PRLDFC, TOPC, OEPC, and TRPC remain available for controlled
+comparisons and reproducibility. See [the TPSC method note](docs/TPSC.md),
+[the design](docs/superpowers/specs/2026-09-29-tpsc-design.md), and
+[the implementation plan](docs/superpowers/plans/2026-09-29-tpsc-implementation.md).
 
-### PRLDFC data flow
+### TPSC data flow
 
 ```text
-Thermal P3/P4 ─ dense one-to-one seed ─ detail prototype ─ band router ─┐
-RGB/T P3/P4 ─ learnable low/mid/high bands ─ local association ─────────┤
-                                                                        ↓
-                                         normalized bounded RGB residual
-RGB P3/P4 ───────────────────────────────── + ───────── RGB_cal P3/P4 ─┐
-Thermal P3/P4 (unchanged) ──────────────────────────────────────────────┴─ AAM/HOFM
+RGB/T P3/P4 ─ detail + P4 context ─ shared semantic slots ─ relation ─┐
+                                                                       ↓
+RGB P3/P4 ───────────── fixed-bound channel scaling ── RGB_cal P3/P4 ─┐
+Thermal P3/P4 (unchanged) ─────────────────────────────────────────────┴─ AAM/HOFM
 ```
 
-Training uses dense differentiable seed support rather than a fixed candidate
-count. Deterministic Hungarian matching provides one-to-one seed supervision.
-Local attention selects RGB neighborhoods without warping either modality or
-multiplying maximum attention as another confidence term. Overlapping supports
-are mass-normalized, and each correction channel is bounded by epsilon.
+Thermal Gaussian coverage supervision keeps the slot set target-aware without
+assigning slots to individual people. The canonical relation model uses only 32
+prototype nodes (four modality/level groups of eight) and calibrates RGB with a
+fixed ten-percent channel-scale bound. Spatial alignment remains in AAM.
 
 ---
 
 ## Main Results
 
-### PRLDFC status
+### TPSC status
 
-PRLDFC has focused tests for one-to-one seed assignment, learnable frequency
-partition/reconstruction, padding exclusion, Thermal preservation, bounded
-overlap aggregation, non-zero gradients, FusionLayer integration, and config
-contracts. Its training and AP comparison have not been completed. Structural
-validation must not be read as an AP improvement.
+TPSC has focused tests for padding exclusion, empty-GT stability, shared-slot
+normalization, Thermal preservation, bounded non-zero RGB modulation, gradient
+flow, interventions, FusionLayer integration, and config contracts. Training
+and AP comparison are pending. Structural validation is not an accuracy claim.
 
 ### Initial cross-stage TRPC three-seed result
 
@@ -191,6 +185,18 @@ Update the `data_root` paths in the corresponding config files under `configs/_b
 
 ## Training
 
+**TPSC matched seed-0 controls and canonical model**
+
+```bash
+python tools/train.py configs/coxnet/tpsc/same_stage_control.py --seed 0 --deterministic
+python tools/train.py configs/coxnet/tpsc/TPSC_core.py --seed 0 --deterministic
+python tools/train.py configs/coxnet/tpsc/TPSC_relation.py --seed 0 --deterministic
+```
+
+Run `TPSC_relation.py` with seeds 1 and 2 and distinct `--work-dir` paths after
+the seed-0 mechanism check. See [docs/TPSC.md](docs/TPSC.md) for the exact
+method, losses, diagnostics, and causal interventions.
+
 **PRLDFC complete CLFM replacement, canonical P3/P4 treatment (seed 0)**
 
 ```bash
@@ -265,6 +271,10 @@ configs/coxnet/
 │   └── same_stage_no_calibration.py
 ├── topc/
 │   └── TOPC.py
+├── tpsc/
+│   ├── same_stage_control.py
+│   ├── TPSC_core.py
+│   └── TPSC_relation.py
 └── trpc/
     ├── TRPC.py
     ├── TRPC_same_stage.py
@@ -277,14 +287,14 @@ configs/coxnet/
 
 ```bash
 python tools/test.py \
-    configs/coxnet/prldfc/PRLDFC.py \
+    configs/coxnet/tpsc/TPSC_relation.py \
     /path/to/checkpoint.pth \
     --eval bbox
 ```
 
-For a strict same-stage control without RGB calibration, use
-`configs/coxnet/prldfc/same_stage_no_calibration.py`. It has the same
-RGB/Thermal FPN levels and directly feeds both features into AAM/HOFM.
+For the strict matched same-stage control without RGB calibration, use
+`configs/coxnet/tpsc/same_stage_control.py`. It has the same RGB/Thermal FPN
+levels and directly feeds both features into AAM/HOFM.
 
 ---
 
