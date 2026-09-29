@@ -426,4 +426,3 @@ Expected: one parent launcher and one seed-0 trainer use physical GPU 0; seeds 1
 Inspect tmux, `nvidia-smi`, process arguments, the seed-0 console log, and the first available ICBFC diagnostics. Verify the configured work directory and seed, and distinguish process launch from completed training.
 
 Expected: seed 0 is genuinely running from epoch 1; candidate count/support, relation/router statistics, and `delta_ratio` are finite and non-degenerate. Do not claim AP or training completion.
-
