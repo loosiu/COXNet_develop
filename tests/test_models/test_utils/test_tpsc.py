@@ -1,13 +1,38 @@
 import torch
 
 from mmdet.models.utils.tpsc import (
+    PrototypeRelationBlock,
     SharedSlotPrototypeExtractor,
     TPSCDescriptor,
+    TinyAwarePrototypeSemanticCalibration,
     build_tpsc_gaussian_targets,
     prototype_coverage_loss,
     prototype_diversity_loss,
     valid_average_pool,
 )
+
+
+def _tpsc_inputs(batch=2, channels=4):
+    torch.manual_seed(19)
+    rgb = (
+        torch.randn(batch, channels, 4, 4, requires_grad=True),
+        torch.randn(batch, channels, 2, 2, requires_grad=True),
+    )
+    thermal = (
+        torch.randn(batch, channels, 4, 4, requires_grad=True),
+        torch.randn(batch, channels, 2, 2, requires_grad=True),
+    )
+    valid = (
+        torch.ones(batch, 1, 4, 4, dtype=torch.bool),
+        torch.ones(batch, 1, 2, 2, dtype=torch.bool),
+    )
+    targets = (
+        torch.zeros(batch, 1, 4, 4),
+        torch.zeros(batch, 1, 2, 2),
+    )
+    targets[0][:, :, 1, 1] = 1.0
+    targets[1][:, :, 0, 0] = 1.0
+    return rgb, thermal, valid, targets
 
 
 def test_tpsc_gaussian_targets_cover_fractional_centers_and_mask_padding():
@@ -210,3 +235,157 @@ def test_tpsc_diversity_penalizes_collapsed_slots_more_than_separated_slots():
     assert collapsed_loss > separated_loss
     assert padding_loss.item() == 0.0
     assert torch.isfinite(padding_loss)
+
+
+def test_tpsc_core_uses_same_slot_thermal_conditioning_without_relation():
+    rgb, thermal, valid, targets = _tpsc_inputs()
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2,
+        relation_depth=1, use_relation=False)
+
+    calibrated, aux = model(
+        rgb, thermal, valid_masks=valid, coverage_targets=targets,
+        return_aux=True)
+
+    assert len(calibrated) == 2
+    assert calibrated[0].shape == rgb[0].shape
+    assert calibrated[1].shape == rgb[1].shape
+    assert aux['cross_modal_attention_mass'].item() == 0.0
+    assert aux['cross_scale_attention_mass'].item() == 0.0
+
+
+def test_tpsc_relation_connects_modalities_and_scales_with_expected_shapes():
+    block = PrototypeRelationBlock(dim=4, num_heads=2)
+    nodes = torch.randn(2, 8, 4)
+    output, weights = block(nodes)
+
+    assert output.shape == nodes.shape
+    assert weights.shape == (2, 2, 8, 8)
+    assert not torch.allclose(output, nodes)
+    assert torch.allclose(weights.sum(-1), torch.ones(2, 2, 8), atol=1e-6)
+
+
+def test_tpsc_modifies_only_rgb_and_respects_fixed_ten_percent_bound():
+    rgb, thermal, valid, targets = _tpsc_inputs()
+    thermal_before = tuple(feature.detach().clone() for feature in thermal)
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2,
+        modulation_bound=0.1, init_std=1e-2)
+
+    calibrated, aux = model(
+        rgb, thermal, valid_masks=valid, coverage_targets=targets,
+        return_aux=True)
+
+    for original, output in zip(rgb, calibrated):
+        nonzero = original.abs() > 1e-6
+        ratio = output[nonzero] / original[nonzero]
+        assert ratio.min() >= 0.9 - 1e-6
+        assert ratio.max() <= 1.1 + 1e-6
+        assert not torch.equal(original, output)
+    for before, after in zip(thermal_before, thermal):
+        assert torch.equal(before, after.detach())
+    assert aux['channel_scale_abs_max'] <= 0.1 + 1e-6
+    assert aux['modulation_ratio'] > 0
+
+
+def test_tpsc_nonzero_initialization_sends_detection_gradient_to_both_modalities():
+    rgb, thermal, valid, targets = _tpsc_inputs()
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2,
+        init_std=1e-2, use_relation=True)
+    calibrated = model(rgb, thermal, valid_masks=valid)
+
+    loss = sum(feature.square().mean() for feature in calibrated)
+    loss.backward()
+    diagnostics = model.gradient_diagnostics()
+
+    assert sum(feature.grad.abs().sum() for feature in rgb).item() > 0
+    assert sum(feature.grad.abs().sum() for feature in thermal).item() > 0
+    for name in ('rgb_projection', 'thermal_projection', 'relation',
+                 'conditioner', 'modulation'):
+        assert diagnostics['grad_norm_' + name] > 0
+
+
+def test_tpsc_disable_modulation_is_exact_rgb_identity():
+    rgb, thermal, valid, _ = _tpsc_inputs()
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2)
+
+    calibrated = model(
+        rgb, thermal, valid_masks=valid, disable_modulation=True)
+
+    assert all(torch.equal(before, after)
+               for before, after in zip(rgb, calibrated))
+
+
+def test_tpsc_disable_relation_matches_core_path():
+    rgb, thermal, valid, _ = _tpsc_inputs()
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2,
+        use_relation=True)
+
+    disabled = model(
+        rgb, thermal, valid_masks=valid, disable_relation=True)
+    original_flag = model.use_relation
+    model.use_relation = False
+    core = model(rgb, thermal, valid_masks=valid)
+    model.use_relation = original_flag
+
+    assert all(torch.equal(left, right) for left, right in zip(disabled, core))
+
+
+def test_tpsc_shuffle_thermal_prototypes_changes_batch_two_and_is_noop_for_batch_one():
+    rgb, thermal, valid, _ = _tpsc_inputs(batch=2)
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2)
+
+    normal = model(rgb, thermal, valid_masks=valid)
+    shuffled = model(
+        rgb, thermal, valid_masks=valid, shuffle_thermal_prototypes=True)
+    assert any(not torch.equal(left, right)
+               for left, right in zip(normal, shuffled))
+
+    rgb1 = tuple(feature[:1] for feature in rgb)
+    thermal1 = tuple(feature[:1] for feature in thermal)
+    valid1 = tuple(mask[:1] for mask in valid)
+    normal1 = model(rgb1, thermal1, valid_masks=valid1)
+    shuffled1 = model(
+        rgb1, thermal1, valid_masks=valid1,
+        shuffle_thermal_prototypes=True)
+    assert all(torch.equal(left, right)
+               for left, right in zip(normal1, shuffled1))
+
+
+def test_tpsc_forward_handles_empty_gt_partial_padding_and_all_padding_without_nan():
+    rgb, thermal, valid, targets = _tpsc_inputs()
+    valid[0][0, :, :, -1] = False
+    valid[0][1] = False
+    valid[1][1] = False
+    targets = tuple(torch.zeros_like(target) for target in targets)
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2)
+
+    calibrated, aux = model(
+        rgb, thermal, valid_masks=valid, coverage_targets=targets,
+        return_aux=True)
+
+    assert all(torch.isfinite(feature).all() for feature in calibrated)
+    assert all(torch.isfinite(value).all() for value in aux.values()
+               if torch.is_tensor(value))
+    assert aux['coverage_loss'].item() == 0.0
+
+
+def test_tpsc_rejects_wrong_level_count_and_modality_shape_mismatch():
+    model = TinyAwarePrototypeSemanticCalibration(
+        channels=4, prototype_dim=4, num_slots=2, num_heads=2)
+    rgb, thermal, valid, _ = _tpsc_inputs()
+
+    for bad_rgb, bad_thermal, bad_valid in (
+            (rgb[:1], thermal[:1], valid[:1]),
+            (rgb, (thermal[0], thermal[1][:, :, :1]), valid)):
+        try:
+            model(bad_rgb, bad_thermal, valid_masks=bad_valid)
+        except ValueError as error:
+            assert 'level' in str(error).lower() or 'shape' in str(error).lower()
+        else:
+            raise AssertionError('TPSC accepted invalid feature levels')

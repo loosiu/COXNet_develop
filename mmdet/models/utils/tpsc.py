@@ -257,3 +257,297 @@ def prototype_diversity_loss(thermal_attention, valid_mask):
     if not losses:
         return thermal_attention.sum() * 0.0
     return torch.stack(losses).mean()
+
+
+class PrototypeRelationBlock(nn.Module):
+    """A small pre-norm Transformer block over prototype nodes."""
+
+    def __init__(self, dim=64, num_heads=4):
+        super().__init__()
+        if dim < 1 or num_heads < 1 or dim % num_heads:
+            raise ValueError('dim must be positive and divisible by num_heads')
+        self.norm1 = nn.LayerNorm(dim)
+        self.attention = nn.MultiheadAttention(
+            dim, num_heads, dropout=0.0, batch_first=True)
+        self.norm2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, 4 * dim), nn.GELU(), nn.Linear(4 * dim, dim))
+
+    def forward(self, nodes):
+        normalized = self.norm1(nodes)
+        update, weights = self.attention(
+            normalized, normalized, normalized, need_weights=True,
+            average_attn_weights=False)
+        nodes = nodes + update
+        nodes = nodes + self.mlp(self.norm2(nodes))
+        return nodes, weights
+
+
+def _attention_entropy(attention):
+    probability = attention.flatten(2)
+    entropy = -(probability * probability.clamp_min(1e-12).log()).sum(-1)
+    return entropy.mean()
+
+
+def _prototype_pairwise_cosine(prototypes):
+    slots = prototypes.shape[1]
+    if slots < 2:
+        return prototypes.sum() * 0.0
+    normalized = F.normalize(prototypes, dim=-1, eps=1e-12)
+    cosine = normalized @ normalized.transpose(1, 2)
+    off_diagonal = ~torch.eye(
+        slots, device=cosine.device, dtype=torch.bool)
+    return cosine[:, off_diagonal].mean()
+
+
+def _prototype_effective_rank(prototypes):
+    ranks = []
+    for sample in prototypes:
+        centered = sample - sample.mean(dim=0, keepdim=True)
+        singular = torch.linalg.svdvals(centered)
+        probability = singular / singular.sum().clamp_min(1e-12)
+        ranks.append(torch.exp(-(
+            probability * probability.clamp_min(1e-12).log()).sum()))
+    return torch.stack(ranks).mean()
+
+
+class TinyAwarePrototypeSemanticCalibration(nn.Module):
+    """Use P3/P4 semantic prototypes to calibrate only RGB channels."""
+
+    def __init__(self, channels, prototype_dim=64, num_slots=8,
+                 num_heads=4, relation_depth=1, modulation_bound=0.1,
+                 init_std=1e-2, use_relation=True):
+        super().__init__()
+        if channels < 1 or relation_depth < 0:
+            raise ValueError('channels must be positive and depth non-negative')
+        if not 0 < modulation_bound <= 1:
+            raise ValueError('modulation_bound must be in (0, 1]')
+        self.channels = int(channels)
+        self.prototype_dim = int(prototype_dim)
+        self.num_slots = int(num_slots)
+        self.modulation_bound = float(modulation_bound)
+        self.use_relation = bool(use_relation)
+
+        self.rgb_descriptor = TPSCDescriptor(channels, prototype_dim)
+        self.thermal_descriptor = TPSCDescriptor(channels, prototype_dim)
+        self.slot_extractors = nn.ModuleList([
+            SharedSlotPrototypeExtractor(prototype_dim, num_slots)
+            for _ in range(2)
+        ])
+        self.relation_blocks = nn.ModuleList([
+            PrototypeRelationBlock(prototype_dim, num_heads)
+            for _ in range(relation_depth)
+        ])
+        self.conditioners = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(3 * prototype_dim, prototype_dim),
+                nn.GELU(),
+                nn.Linear(prototype_dim, prototype_dim))
+            for _ in range(2)
+        ])
+        self.modulation_heads = nn.ModuleList([
+            nn.Linear(num_slots * prototype_dim, channels)
+            for _ in range(2)
+        ])
+        for head in self.modulation_heads:
+            nn.init.normal_(head.weight, std=init_std)
+            nn.init.zeros_(head.bias)
+
+        self._gradient_norms = {
+            name: 0.0 for name in (
+                'rgb_projection', 'thermal_projection', 'relation',
+                'conditioner', 'modulation')
+        }
+        self._register_gradient_diagnostics()
+
+    def _cache_gradient(self, name):
+        def hook(gradient):
+            self._gradient_norms[name] = float(
+                gradient.detach().float().norm().item())
+            return gradient
+        return hook
+
+    def _register_gradient_diagnostics(self):
+        parameters = {
+            'rgb_projection':
+                self.slot_extractors[0].rgb_projection[0].weight,
+            'thermal_projection':
+                self.slot_extractors[0].thermal_projection[0].weight,
+            'conditioner': self.conditioners[0][0].weight,
+            'modulation': self.modulation_heads[0].weight,
+        }
+        if self.relation_blocks:
+            parameters['relation'] = (
+                self.relation_blocks[0].attention.in_proj_weight)
+        for name, parameter in parameters.items():
+            parameter.register_hook(self._cache_gradient(name))
+
+    def gradient_diagnostics(self):
+        return {
+            'grad_norm_' + name: value
+            for name, value in self._gradient_norms.items()
+        }
+
+    @staticmethod
+    def _validate_levels(rgb_feats, thermal_feats, valid_masks):
+        if len(rgb_feats) != 2 or len(thermal_feats) != 2:
+            raise ValueError('TPSC expects exactly two feature levels')
+        if valid_masks is not None and len(valid_masks) != 2:
+            raise ValueError('TPSC expects exactly two valid-mask levels')
+        for level, (rgb, thermal) in enumerate(zip(rgb_feats, thermal_feats)):
+            if tuple(rgb.shape) != tuple(thermal.shape):
+                raise ValueError(
+                    'RGB/Thermal shape mismatch at level {}'.format(level))
+
+    @staticmethod
+    def _relation_masses(weights, num_slots):
+        if weights is None:
+            zero = None
+            return zero, zero
+        device = weights.device
+        group = torch.arange(4, device=device).repeat_interleave(num_slots)
+        modality = group.remainder(2)
+        scale = torch.div(group, 2, rounding_mode='floor')
+        cross_modal = modality[:, None] != modality[None, :]
+        cross_scale = scale[:, None] != scale[None, :]
+        return (
+            (weights * cross_modal.to(weights.dtype)).sum(-1).mean(),
+            (weights * cross_scale.to(weights.dtype)).sum(-1).mean())
+
+    def _condition(self, rgb_prototypes, thermal_prototypes, level):
+        difference = thermal_prototypes - rgb_prototypes
+        update = self.conditioners[level](torch.cat((
+            rgb_prototypes, thermal_prototypes, difference), dim=-1))
+        return rgb_prototypes + update
+
+    def forward(self, rgb_feats, thermal_feats, valid_masks=None,
+                coverage_targets=None, return_aux=False,
+                disable_modulation=False, shuffle_thermal_prototypes=False,
+                disable_relation=False):
+        self._validate_levels(rgb_feats, thermal_feats, valid_masks)
+        if valid_masks is None:
+            valid_masks = tuple(torch.ones(
+                feature.shape[0], 1, *feature.shape[-2:],
+                device=feature.device, dtype=torch.bool)
+                for feature in rgb_feats)
+        if coverage_targets is not None and len(coverage_targets) != 2:
+            raise ValueError('TPSC expects exactly two coverage target levels')
+
+        rgb_descriptors = self.rgb_descriptor(
+            rgb_feats[0], rgb_feats[1], valid_masks[0], valid_masks[1])
+        thermal_descriptors = self.thermal_descriptor(
+            thermal_feats[0], thermal_feats[1],
+            valid_masks[0], valid_masks[1])
+        slots = [
+            extractor(rgb_descriptor, thermal_descriptor, valid_mask)
+            for extractor, rgb_descriptor, thermal_descriptor, valid_mask in
+            zip(self.slot_extractors, rgb_descriptors,
+                thermal_descriptors, valid_masks)
+        ]
+        rgb_prototypes = [item['rgb_prototypes'] for item in slots]
+        thermal_prototypes = [item['thermal_prototypes'] for item in slots]
+        if shuffle_thermal_prototypes and thermal_prototypes[0].shape[0] > 1:
+            thermal_prototypes = [
+                prototype.roll(1, dims=0) for prototype in thermal_prototypes]
+
+        cosine_before = torch.stack([
+            F.cosine_similarity(rgb, thermal, dim=-1).mean()
+            for rgb, thermal in zip(rgb_prototypes, thermal_prototypes)
+        ]).mean()
+        relation_weights = None
+        relation_enabled = (
+            self.use_relation and not disable_relation and
+            len(self.relation_blocks) > 0)
+        if relation_enabled:
+            nodes = torch.cat((
+                rgb_prototypes[0], thermal_prototypes[0],
+                rgb_prototypes[1], thermal_prototypes[1]), dim=1)
+            weights = []
+            for block in self.relation_blocks:
+                nodes, block_weights = block(nodes)
+                weights.append(block_weights)
+            relation_weights = torch.stack(weights).mean(dim=0)
+            k = self.num_slots
+            rgb_prototypes = [nodes[:, :k], nodes[:, 2 * k:3 * k]]
+            thermal_prototypes = [
+                nodes[:, k:2 * k], nodes[:, 3 * k:4 * k]]
+
+        conditioned = [
+            self._condition(rgb, thermal, level)
+            for level, (rgb, thermal) in enumerate(zip(
+                rgb_prototypes, thermal_prototypes))
+        ]
+        cosine_after = torch.stack([
+            F.cosine_similarity(rgb, thermal, dim=-1).mean()
+            for rgb, thermal in zip(conditioned, thermal_prototypes)
+        ]).mean()
+
+        scales = [
+            self.modulation_bound * torch.tanh(head(prototype.flatten(1)))
+            for head, prototype in zip(self.modulation_heads, conditioned)
+        ]
+        if disable_modulation:
+            calibrated = tuple(rgb_feats)
+        else:
+            calibrated = tuple(
+                feature * (1.0 + scale[:, :, None, None])
+                for feature, scale in zip(rgb_feats, scales))
+        if not return_aux:
+            return calibrated
+
+        zero = rgb_feats[0].sum() * 0.0
+        if coverage_targets is None:
+            coverage = zero
+        else:
+            coverage = torch.stack([
+                prototype_coverage_loss(
+                    item['thermal_attention'], target, valid_mask)
+                for item, target, valid_mask in zip(
+                    slots, coverage_targets, valid_masks)
+            ]).mean()
+        diversity = torch.stack([
+            prototype_diversity_loss(
+                item['thermal_attention'], valid_mask)
+            for item, valid_mask in zip(slots, valid_masks)
+        ]).mean()
+        cross_modal, cross_scale = self._relation_masses(
+            relation_weights, self.num_slots)
+        if cross_modal is None:
+            cross_modal = zero
+            cross_scale = zero
+        delta_norm = torch.stack([
+            (output - source).float().norm()
+            for source, output in zip(rgb_feats, calibrated)
+        ]).sum()
+        source_norm = torch.stack([
+            source.float().norm() for source in rgb_feats
+        ]).sum().clamp_min(1e-12)
+        thermal_stack = torch.cat(thermal_prototypes, dim=1)
+        gradient_monitors = {
+            name: rgb_feats[0].new_tensor(value)
+            for name, value in self.gradient_diagnostics().items()
+        }
+        aux = dict(
+            coverage_loss=coverage,
+            diversity_loss=diversity,
+            attention_entropy_rgb=torch.stack([
+                _attention_entropy(item['rgb_attention'])
+                for item in slots]).mean().detach(),
+            attention_entropy_thermal=torch.stack([
+                _attention_entropy(item['thermal_attention'])
+                for item in slots]).mean().detach(),
+            prototype_pairwise_cosine=(
+                _prototype_pairwise_cosine(thermal_stack).detach()),
+            prototype_effective_rank=(
+                _prototype_effective_rank(thermal_stack).detach()),
+            proto_cos_before=cosine_before.detach(),
+            proto_cos_after=cosine_after.detach(),
+            cross_modal_attention_mass=cross_modal.detach(),
+            cross_scale_attention_mass=cross_scale.detach(),
+            channel_scale_abs_mean=torch.stack([
+                scale.abs().mean() for scale in scales]).mean().detach(),
+            channel_scale_abs_max=torch.stack([
+                scale.abs().max() for scale in scales]).max().detach(),
+            modulation_ratio=(delta_norm / source_norm).detach(),
+            **gradient_monitors)
+        return calibrated, aux
