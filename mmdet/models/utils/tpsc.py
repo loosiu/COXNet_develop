@@ -120,3 +120,140 @@ class TPSCDescriptor(nn.Module):
         p3_descriptor = self.p3_merge(torch.cat((
             p3, detail, semantic), dim=1))
         return p3_descriptor * valid3, p4_descriptor * valid4
+
+
+class _ChannelLayerNorm(nn.Module):
+    """Apply LayerNorm over channels independently at every spatial point."""
+
+    def __init__(self, channels):
+        super().__init__()
+        self.norm = nn.LayerNorm(channels)
+
+    def forward(self, feature):
+        return self.norm(feature.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
+
+def _masked_spatial_softmax(logits, valid_mask):
+    """Normalize each slot over valid positions and keep all-invalid rows zero."""
+    batch, slots, height, width = logits.shape
+    expected = (batch, 1, height, width)
+    if tuple(valid_mask.shape) != expected:
+        raise ValueError('valid_mask must have shape Bx1xHxW')
+    valid = valid_mask.to(dtype=torch.bool).expand(-1, slots, -1, -1)
+    flat_logits = logits.flatten(2)
+    flat_valid = valid.flatten(2)
+    masked_logits = flat_logits.masked_fill(
+        ~flat_valid, torch.finfo(flat_logits.dtype).min)
+    attention = torch.softmax(masked_logits, dim=-1) * flat_valid.to(
+        flat_logits.dtype)
+    attention = attention / attention.sum(
+        dim=-1, keepdim=True).clamp_min(1e-12)
+    return attention.reshape(batch, slots, height, width)
+
+
+class SharedSlotPrototypeExtractor(nn.Module):
+    """Extract modality-specific prototypes using shared semantic queries."""
+
+    def __init__(self, prototype_dim=64, num_slots=8):
+        super().__init__()
+        if prototype_dim < 1 or num_slots < 1:
+            raise ValueError('prototype_dim and num_slots must be positive')
+        self.prototype_dim = int(prototype_dim)
+        self.num_slots = int(num_slots)
+        self.rgb_projection = nn.Sequential(
+            nn.Conv2d(self.prototype_dim, self.prototype_dim, 1, bias=False),
+            _ChannelLayerNorm(self.prototype_dim))
+        self.thermal_projection = nn.Sequential(
+            nn.Conv2d(self.prototype_dim, self.prototype_dim, 1, bias=False),
+            _ChannelLayerNorm(self.prototype_dim))
+        self.slot_queries = nn.Parameter(torch.empty(
+            self.num_slots, self.prototype_dim))
+        nn.init.normal_(self.slot_queries, std=self.prototype_dim ** -0.5)
+
+    def _extract(self, feature, projection, valid_mask):
+        if feature.ndim != 4 or feature.shape[1] != self.prototype_dim:
+            raise ValueError(
+                'slot input must be BCHW with prototype_dim channels')
+        embedded = projection(feature)
+        logits = torch.einsum(
+            'kd,bdhw->bkhw', self.slot_queries, embedded)
+        logits = logits / math.sqrt(self.prototype_dim)
+        attention = _masked_spatial_softmax(logits, valid_mask)
+        prototypes = torch.einsum('bkhw,bdhw->bkd', attention, embedded)
+        return prototypes, attention
+
+    def forward(self, rgb, thermal, valid_mask):
+        if tuple(rgb.shape) != tuple(thermal.shape):
+            raise ValueError('RGB and Thermal slot inputs must have equal shapes')
+        rgb_prototypes, rgb_attention = self._extract(
+            rgb, self.rgb_projection, valid_mask)
+        thermal_prototypes, thermal_attention = self._extract(
+            thermal, self.thermal_projection, valid_mask)
+        return dict(
+            rgb_prototypes=rgb_prototypes,
+            thermal_prototypes=thermal_prototypes,
+            rgb_attention=rgb_attention,
+            thermal_attention=thermal_attention)
+
+
+def prototype_coverage_loss(thermal_attention, target, valid_mask):
+    """Symmetric KL between mean Thermal slot coverage and GT Gaussians."""
+    if thermal_attention.ndim != 4:
+        raise ValueError('thermal_attention must have shape BxKxHxW')
+    expected = (
+        thermal_attention.shape[0], 1, *thermal_attention.shape[-2:])
+    if tuple(target.shape) != expected or tuple(valid_mask.shape) != expected:
+        raise ValueError('target and valid_mask must have shape Bx1xHxW')
+
+    valid = valid_mask.to(thermal_attention.dtype)
+    coverage = thermal_attention.mean(dim=1, keepdim=True) * valid
+    target = target.to(thermal_attention.dtype) * valid
+    losses = []
+    eps = torch.finfo(thermal_attention.dtype).eps
+    for sample_coverage, sample_target in zip(coverage, target):
+        target_mass = sample_target.sum()
+        coverage_mass = sample_coverage.sum()
+        if target_mass.detach().item() <= 0 or coverage_mass.detach().item() <= 0:
+            continue
+        probability = sample_coverage.flatten() / coverage_mass
+        target_probability = sample_target.flatten() / target_mass
+        probability = probability.clamp_min(eps)
+        target_probability = target_probability.clamp_min(eps)
+        probability = probability / probability.sum()
+        target_probability = target_probability / target_probability.sum()
+        kl_tc = torch.sum(target_probability * (
+            target_probability.log() - probability.log()))
+        kl_ct = torch.sum(probability * (
+            probability.log() - target_probability.log()))
+        losses.append(0.5 * (kl_tc + kl_ct))
+    if not losses:
+        return thermal_attention.sum() * 0.0
+    return torch.stack(losses).mean()
+
+
+def prototype_diversity_loss(thermal_attention, valid_mask):
+    """Penalize cosine overlap between different Thermal slot maps."""
+    if thermal_attention.ndim != 4:
+        raise ValueError('thermal_attention must have shape BxKxHxW')
+    batch, slots, height, width = thermal_attention.shape
+    expected = (batch, 1, height, width)
+    if tuple(valid_mask.shape) != expected:
+        raise ValueError('valid_mask must have shape Bx1xHxW')
+    if slots < 2:
+        return thermal_attention.sum() * 0.0
+
+    losses = []
+    for sample_attention, sample_valid in zip(
+            thermal_attention, valid_mask):
+        if not sample_valid.any():
+            continue
+        masked = sample_attention * sample_valid.to(
+            sample_attention.dtype)
+        flattened = F.normalize(masked.flatten(1), dim=-1, eps=1e-12)
+        cosine = flattened @ flattened.transpose(0, 1)
+        off_diagonal = ~torch.eye(
+            slots, device=cosine.device, dtype=torch.bool)
+        losses.append(cosine[off_diagonal].mean())
+    if not losses:
+        return thermal_attention.sum() * 0.0
+    return torch.stack(losses).mean()
