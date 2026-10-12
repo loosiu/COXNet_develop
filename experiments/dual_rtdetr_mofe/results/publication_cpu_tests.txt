@@ -1,0 +1,58 @@
+test_collate_stacks_images_and_keeps_variable_targets (test_data.PairedCocoDatasetTests) ... ok
+test_contiguous_labels_clipped_boxes_and_metadata (test_data.PairedCocoDatasetTests) ... ok
+test_eval_resize_records_invertible_pixel_mapping (test_data.PairedCocoDatasetTests) ... ok
+test_explicit_category_filter_and_empty_shape (test_data.PairedCocoDatasetTests) ... ok
+test_missing_pair_and_dimension_mismatch_raise (test_data.PairedCocoDatasetTests) ... ok
+test_stale_annotation_dimensions_use_decoded_pixels_and_keep_source (test_data.PairedCocoDatasetTests) ... ok
+test_stale_metadata_and_crop_keep_original_decoded_size (test_data.PairedCocoDatasetTests) ... ok
+test_synchronized_crop_and_flip_move_images_and_boxes (test_data.PairedCocoDatasetTests) ... ok
+test_tiny_box_is_preserved_after_resize (test_data.PairedCocoDatasetTests) ... ok
+test_empty_results_and_selected_negative_image (test_evaluation.TinyEvaluationTests) ... ok
+test_four_class_protocol_is_rejected (test_evaluation.TinyEvaluationTests) ... ok
+test_perfect_small_detection_and_ignored_person_region (test_evaluation.TinyEvaluationTests) ... ok
+test_tiny_and_small_are_distinct_and_uncertain_is_ignored (test_evaluation.TinyEvaluationTests) ... ok
+test_all_invalid_masks_preserve_original_features (test_residual_mofe.ResidualMoFETests) ... ok
+test_banks_are_independent_and_keep_original_all_parameters (test_residual_mofe.ResidualMoFETests) ... ok
+test_bidirectional_output_uses_original_inputs_and_small_residual (test_residual_mofe.ResidualMoFETests) ... ok
+test_checkpoint_roundtrip (test_residual_mofe.ResidualMoFETests) ... ok
+test_deterministic_in_train_and_eval_without_sampling_or_rng_use (test_residual_mofe.ResidualMoFETests) ... ok
+test_every_bank_parameter_and_scale_receives_gradient_and_updates (test_residual_mofe.ResidualMoFETests) ... ok
+test_global_simplex_weights_and_diagnostics (test_residual_mofe.ResidualMoFETests) ... ok
+test_masked_inputs_cannot_leak_and_invalid_updates_are_identity (test_residual_mofe.ResidualMoFETests) ... ok
+test_override_selects_expert_in_both_directions_and_validates_simplex (test_residual_mofe.ResidualMoFETests) ... ok
+test_reject_nonfinite_scale_and_mismatched_inputs (test_residual_mofe.ResidualMoFETests) ... ok
+test_zero_scales_are_exact_identity (test_residual_mofe.ResidualMoFETests) ... ok
+test_A_initial_tensors_and_cpu_rng_match (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_all_original_RGB_bank_initial_values_match_including_router (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_detection_only_gradients_and_updates_all_36_module_parameters (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_ema_preserves_banks_and_scales_and_is_repeatable (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_only_P3_changes_before_original_multiscale_fusion (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_recipe_matches_A_except_module_and_output (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_zero_scales_replay_and_bypass_predictions_are_identical (test_residual_mofe_integration.ResidualMoFEIntegrationTests) ... ok
+test_full_dual_encoders_receive_gradients_without_proposed_modules (test_rtdetr_baseline_recipe.BaselineTests) ... ok
+test_ema_ramp_and_checkpoint_continue_same_trajectory (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_groups_cover_trainable_parameters_once_and_preserve_warmup_ratio (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_inference_selects_ema_and_legacy_remains_loadable (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_amp_overflow_skips_update_then_recovers_with_finite_gradient (test_runtime.RuntimeTests) ... skipped 'CUDA GradScaler test'
+test_checkpoint_roundtrip_restores_optimizer_and_metadata (test_runtime.RuntimeTests) ... ok
+test_evaluation_uses_visited_images_and_restores_training_mode (test_runtime.RuntimeTests) ... ok
+test_postprocess_restores_non_square_original_coordinates (test_runtime.RuntimeTests) ... ok
+test_random_batch_resize_preserves_modal_alignment_and_normalized_boxes (test_runtime.RuntimeTests) ... ok
+test_resume_uses_saved_configuration_and_explicit_config_can_override (test_runtime.RuntimeTests) ... ok
+test_warmup_exact_endpoints_and_constant_tail (test_runtime.RuntimeTests) ... ok
+test_all_experts_and_router_learn_on_first_backward (test_s3am_mofe.S3AMMoFETests) ... ok
+test_all_invalid_is_finite_identity (test_s3am_mofe.S3AMMoFETests) ... ok
+test_bad_input_and_non_simplex_overrides_are_rejected (test_s3am_mofe.S3AMMoFETests) ... ok
+test_forward_matches_cached_mixture_without_recomputation (test_s3am_mofe.S3AMMoFETests) ... ok
+test_invalid_constructor_values_are_rejected (test_s3am_mofe.S3AMMoFETests) ... ok
+test_paper_frequency_pair_order_and_channel_counts (test_s3am_mofe.S3AMMoFETests) ... ok
+test_single_pixel_and_odd_size_inputs_preserve_shape (test_s3am_mofe.S3AMMoFETests) ... ok
+test_softmax_is_image_level_simplex_with_adaptive_initialization (test_s3am_mofe.S3AMMoFETests) ... ok
+test_validity_intersection_controls_injection_and_pooling (test_s3am_mofe.S3AMMoFETests) ... ok
+test_weighted_sum_is_added_directly_only_to_rgb (test_s3am_mofe.S3AMMoFETests) ... ok
+test_zero_experts_return_exact_identity (test_s3am_mofe.S3AMMoFETests) ... ok
+
+----------------------------------------------------------------------
+Ran 53 tests in 13.530s
+
+OK (skipped=1)

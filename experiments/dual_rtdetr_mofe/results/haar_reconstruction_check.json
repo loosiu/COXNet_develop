@@ -1,0 +1,113 @@
+{
+  "meaning": "Current signed stride-one Haar retains its projected input when all four bands are retained; this does not prove learned downstream mixing is lossless or beneficial.",
+  "checks": [
+    {
+      "shape": [
+        2,
+        64,
+        64,
+        80
+      ],
+      "band_shapes": [
+        [
+          2,
+          64,
+          64,
+          80
+        ],
+        [
+          2,
+          64,
+          64,
+          80
+        ],
+        [
+          2,
+          64,
+          64,
+          80
+        ],
+        [
+          2,
+          64,
+          64,
+          80
+        ]
+      ],
+      "max_reconstruction_error": 4.76837158203125e-07,
+      "passed": true
+    },
+    {
+      "shape": [
+        1,
+        3,
+        7,
+        9
+      ],
+      "band_shapes": [
+        [
+          1,
+          3,
+          7,
+          9
+        ],
+        [
+          1,
+          3,
+          7,
+          9
+        ],
+        [
+          1,
+          3,
+          7,
+          9
+        ],
+        [
+          1,
+          3,
+          7,
+          9
+        ]
+      ],
+      "max_reconstruction_error": 1.7881393432617188e-07,
+      "passed": true
+    },
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "band_shapes": [
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "max_reconstruction_error": 0.0,
+      "passed": true
+    }
+  ]
+}

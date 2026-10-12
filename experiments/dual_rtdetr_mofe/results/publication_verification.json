@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-12",
+  "environment": {
+    "python": "3.9",
+    "torch": "1.13.1+cu116",
+    "torchvision": "0.14.1+cu116",
+    "numpy": "1.23.5"
+  },
+  "working_directory": "experiments/dual_rtdetr_mofe",
+  "cpu_tests": {
+    "command": "OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 python -m unittest discover -s tests -v",
+    "total": 53,
+    "passed": 52,
+    "skipped": 1,
+    "failures": 0,
+    "skip_reason": "CUDA GradScaler test",
+    "exit_code": 0,
+    "log": "publication_cpu_tests.txt"
+  },
+  "train_and_evaluate_cli_imports": "passed (--help)",
+  "training_source_sha256_verified_files": 34,
+  "portable_A_B_recipe_equal_except_module_and_output": true,
+  "all_markdown_local_links_exist": true,
+  "scope": "Packaging and CPU verification of original trained B. No GPU jobs launched and no full AP recomputation in this publication task.",
+  "diff_whitespace_check": {
+    "new_code_docs_configs_tests": "passed",
+    "preserved_upstream_paths": "Original vendor source and COCO-BSD license have existing trailing whitespace, retained byte-for-byte for source provenance."
+  }
+}

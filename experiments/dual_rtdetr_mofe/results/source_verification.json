@@ -1,0 +1,47 @@
+{
+  "dyfclt/model.py": {
+    "snapshot": "50e2036eb005ebf642d8790666635c22fc9f5ae6bf73ba7a1e88f6587f96cd37",
+    "current": "50e2036eb005ebf642d8790666635c22fc9f5ae6bf73ba7a1e88f6587f96cd37",
+    "match": true
+  },
+  "dyfclt/dual_encoder.py": {
+    "snapshot": "9cb6444a472f0e7970b319ced67a41467c50fdd3abeeffc4e0eb18106b60d048",
+    "current": "9cb6444a472f0e7970b319ced67a41467c50fdd3abeeffc4e0eb18106b60d048",
+    "match": true
+  },
+  "dyfclt/residual_mofe.py": {
+    "snapshot": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "current": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "match": true
+  },
+  "dyfclt/s3am_mofe.py": {
+    "snapshot": "0ff484f00f9d0f62a7330525ed382be1a2e54653cb8ebd25e55b8b89feffcaa3",
+    "current": "0ff484f00f9d0f62a7330525ed382be1a2e54653cb8ebd25e55b8b89feffcaa3",
+    "match": true
+  },
+  "dyfclt/frequency_utility.py": {
+    "snapshot": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "current": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "match": true
+  },
+  "dyfclt/runtime.py": {
+    "snapshot": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "current": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "match": true
+  },
+  "dyfclt/vendor/rtdetr_decoder.py": {
+    "snapshot": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "current": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "match": true
+  },
+  "dyfclt/data.py": {
+    "snapshot": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "current": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "match": true
+  },
+  "dyfclt/losses.py": {
+    "snapshot": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "current": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "match": true
+  }
+}

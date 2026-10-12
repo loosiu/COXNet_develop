@@ -1,0 +1,194 @@
+{
+  "scope": "Original post-encoder P3 experiment B, not the later pre-pyramid experiment.",
+  "created_date": "2026-10-12",
+  "metric_units": "AP fractions in JSON; multiply by 100 for percent, difference * 100 for percentage points.",
+  "protocol": {
+    "dataset": "RGBTDronePerson",
+    "train_images": 4900,
+    "val_images": 1225,
+    "categories": [
+      "person",
+      "rider",
+      "crowd"
+    ],
+    "category_ids": [
+      0,
+      1,
+      2
+    ],
+    "max_detections": 1000,
+    "iou_thresholds": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "weights": "ema",
+    "note": "Official-style tiny evaluator; AP50/AP75 are not COCO AP50:95."
+  },
+  "runs": {
+    "A": {
+      "name": "dual-stream RT-DETR",
+      "seed": 0,
+      "total_epochs": 20,
+      "global_step": 49000,
+      "exit_code": 0,
+      "parameters": 84854961,
+      "evaluation_weights": "ema",
+      "selection_metric": "AP50",
+      "best": {
+        "epoch": 20,
+        "global_step": 49000,
+        "metrics": {
+          "AP25": 0.6940562097807494,
+          "AP25_tiny": 0.6919110829066917,
+          "AP25_tiny1": 0.601842846339643,
+          "AP25_tiny2": 0.5670260098294468,
+          "AP25_tiny3": 0.7575910210162878,
+          "AP25_small": 0.8402893665750122,
+          "AP25_reasonable": 0.7960381974467469,
+          "AP50": 0.5983865929896189,
+          "AP50_tiny": 0.6134140040825031,
+          "AP50_tiny1": 0.349158187559976,
+          "AP50_tiny2": 0.49585917278088787,
+          "AP50_tiny3": 0.6735896463939187,
+          "AP50_small": 0.3933141777461109,
+          "AP50_reasonable": 0.36612966419137694,
+          "AP75": 0.09865735435745089,
+          "AP75_tiny": 0.10615223038721829,
+          "AP75_tiny1": 0.006320849160021785,
+          "AP75_tiny2": 0.09138664454235641,
+          "AP75_tiny3": 0.11863492417125067,
+          "AP75_small": 0.07987543399782743,
+          "AP75_reasonable": 0.07965450423895445,
+          "images": 1225,
+          "evaluation": "RGBTDronePerson tiny; maxDets=1000",
+          "partial": false
+        }
+      },
+      "final": {
+        "epoch": 20,
+        "global_step": 49000,
+        "metrics": {
+          "AP25": 0.6940562097807494,
+          "AP25_tiny": 0.6919110829066917,
+          "AP25_tiny1": 0.601842846339643,
+          "AP25_tiny2": 0.5670260098294468,
+          "AP25_tiny3": 0.7575910210162878,
+          "AP25_small": 0.8402893665750122,
+          "AP25_reasonable": 0.7960381974467469,
+          "AP50": 0.5983865929896189,
+          "AP50_tiny": 0.6134140040825031,
+          "AP50_tiny1": 0.349158187559976,
+          "AP50_tiny2": 0.49585917278088787,
+          "AP50_tiny3": 0.6735896463939187,
+          "AP50_small": 0.3933141777461109,
+          "AP50_reasonable": 0.36612966419137694,
+          "AP75": 0.09865735435745089,
+          "AP75_tiny": 0.10615223038721829,
+          "AP75_tiny1": 0.006320849160021785,
+          "AP75_tiny2": 0.09138664454235641,
+          "AP75_tiny3": 0.11863492417125067,
+          "AP75_small": 0.07987543399782743,
+          "AP75_reasonable": 0.07965450423895445,
+          "images": 1225,
+          "evaluation": "RGBTDronePerson tiny; maxDets=1000",
+          "partial": false
+        }
+      },
+      "source_log_sha256": "a45cc0a37006d002abfd6c93e618014bc707e0494fc51ab9f74d6bbaa57db9a2",
+      "source_training_config_sha256": "b3c05b4470399514e92fcaca1118e839beeab499aff6e3b83dd4d3469caf3a50",
+      "source_snapshot_sha256": "add3206cdf041eaa7e4b824c914eb3667b9fbc1d83f208fed387065e2616f6c4"
+    },
+    "B": {
+      "name": "dual-stream RT-DETR + bidirectional residual MoFE (post-encoder P3)",
+      "seed": 0,
+      "total_epochs": 20,
+      "global_step": 49000,
+      "exit_code": 0,
+      "parameters": 85286203,
+      "evaluation_weights": "ema",
+      "selection_metric": "AP50",
+      "best": {
+        "epoch": 18,
+        "global_step": 44100,
+        "metrics": {
+          "AP25": 0.6887707998393758,
+          "AP25_tiny": 0.6868899611641652,
+          "AP25_tiny1": 0.5104113690006497,
+          "AP25_tiny2": 0.5735139417995763,
+          "AP25_tiny3": 0.7477331615553214,
+          "AP25_small": 0.817686152619368,
+          "AP25_reasonable": 0.7803703646222557,
+          "AP50": 0.5915289941317035,
+          "AP50_tiny": 0.6083620694036758,
+          "AP50_tiny1": 0.349159066090003,
+          "AP50_tiny2": 0.49671764403016105,
+          "AP50_tiny3": 0.6645300422977929,
+          "AP50_small": 0.37641680864257393,
+          "AP50_reasonable": 0.3465350945351499,
+          "AP75": 0.09673863712957692,
+          "AP75_tiny": 0.10485732722699742,
+          "AP75_tiny1": 0.005438869917221812,
+          "AP75_tiny2": 0.097683100572972,
+          "AP75_tiny3": 0.1156814576368438,
+          "AP75_small": 0.06187237923053054,
+          "AP75_reasonable": 0.07383747276144423,
+          "images": 1225,
+          "evaluation": "RGBTDronePerson tiny; maxDets=1000",
+          "partial": false
+        }
+      },
+      "final": {
+        "epoch": 20,
+        "global_step": 49000,
+        "metrics": {
+          "AP25": 0.6914580979927298,
+          "AP25_tiny": 0.6900957742858087,
+          "AP25_tiny1": 0.4644561502763397,
+          "AP25_tiny2": 0.5616816581720684,
+          "AP25_tiny3": 0.7576970350295934,
+          "AP25_small": 0.8213815689350571,
+          "AP25_reasonable": 0.7480378021487466,
+          "AP50": 0.5896912403649109,
+          "AP50_tiny": 0.6093906084572482,
+          "AP50_tiny1": 0.3521326596565657,
+          "AP50_tiny2": 0.49011936599732836,
+          "AP50_tiny3": 0.6713562048534336,
+          "AP50_small": 0.36125102062042064,
+          "AP50_reasonable": 0.3108785279086691,
+          "AP75": 0.09098795404591013,
+          "AP75_tiny": 0.09890338643818267,
+          "AP75_tiny1": 0.0747297233457264,
+          "AP75_tiny2": 0.09057651063509324,
+          "AP75_tiny3": 0.11059423550789603,
+          "AP75_small": 0.05747499649827751,
+          "AP75_reasonable": 0.07180069148245569,
+          "images": 1225,
+          "evaluation": "RGBTDronePerson tiny; maxDets=1000",
+          "partial": false
+        }
+      },
+      "source_log_sha256": "63f678f3cc21b94dc66f290328f12b0b9d71af0c6e839420bd38978c4b066eda",
+      "source_training_config_sha256": "e200ad384849022a9844534838d475a276027c246fc4068952b43a037988eed4",
+      "source_snapshot_sha256": "9bcedbb1b0737948d15644a83b16fc4cceedaeacca52d4bc3869559bf1ffe338"
+    }
+  },
+  "B_minus_A_percentage_points": {
+    "best": {
+      "AP50": -0.6857598857915481,
+      "AP75": -0.191871722787397,
+      "AP50_tiny": -0.5051934678827363
+    },
+    "final": {
+      "AP50": -0.8695352624707997,
+      "AP75": -0.7669400311540758,
+      "AP50_tiny": -0.40233956252548886
+    }
+  },
+  "limitations": [
+    "One seed only; does not establish statistical significance.",
+    "This S3AM-style adaptation is not an author-exact or full S3AM reproduction.",
+    "The 24-image counterfactual diagnostics are separate from full validation.",
+    "Checkpoints, datasets and full prediction arrays are not distributed in this repository."
+  ]
+}

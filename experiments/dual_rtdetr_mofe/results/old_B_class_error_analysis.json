@@ -1,0 +1,184 @@
+{
+  "scope": "Final epoch20, full1225 images; descriptive greedy matching, not AP.",
+  "class_diagnostics": {
+    "person": {
+      "GT": 11009,
+      "median_bbox_width_height": [
+        9.0,
+        14.0
+      ],
+      "results": {
+        "A": {
+          "0.5": {
+            "TP": 9740,
+            "FP": 42180,
+            "background_or_class": 36857,
+            "localization": 3439,
+            "duplicate": 1884,
+            "FN": 1269,
+            "GT": 11009,
+            "precision": 0.18759630200308167,
+            "recall": 0.8847306749023526
+          },
+          "0.75": {
+            "TP": 3007,
+            "FP": 48913,
+            "localization": 11849,
+            "background_or_class": 36857,
+            "duplicate": 207,
+            "FN": 8002,
+            "GT": 11009,
+            "precision": 0.05791602465331279,
+            "recall": 0.2731401580525025
+          }
+        },
+        "B": {
+          "0.5": {
+            "TP": 9769,
+            "FP": 42691,
+            "localization": 3329,
+            "background_or_class": 37336,
+            "duplicate": 2026,
+            "FN": 1240,
+            "GT": 11009,
+            "precision": 0.1862180709111704,
+            "recall": 0.8873648832773186
+          },
+          "0.75": {
+            "TP": 2930,
+            "FP": 49530,
+            "localization": 11974,
+            "background_or_class": 37336,
+            "FN": 8079,
+            "duplicate": 220,
+            "GT": 11009,
+            "precision": 0.055852077773541745,
+            "recall": 0.2661458806431102
+          }
+        }
+      }
+    },
+    "rider": {
+      "GT": 1447,
+      "median_bbox_width_height": [
+        13.0,
+        18.0
+      ],
+      "results": {
+        "A": {
+          "0.5": {
+            "FP": 19928,
+            "background_or_class": 19245,
+            "TP": 1274,
+            "localization": 498,
+            "FN": 173,
+            "duplicate": 185,
+            "GT": 1447,
+            "precision": 0.06008867088010565,
+            "recall": 0.8804422944022114
+          },
+          "0.75": {
+            "FP": 20803,
+            "background_or_class": 19245,
+            "localization": 1527,
+            "TP": 399,
+            "FN": 1048,
+            "duplicate": 31,
+            "GT": 1447,
+            "precision": 0.01881897934157155,
+            "recall": 0.27574291637871456
+          }
+        },
+        "B": {
+          "0.5": {
+            "TP": 1269,
+            "FP": 21296,
+            "background_or_class": 20587,
+            "localization": 514,
+            "FN": 178,
+            "duplicate": 195,
+            "GT": 1447,
+            "precision": 0.056237536007090624,
+            "recall": 0.8769868693849343
+          },
+          "0.75": {
+            "FP": 22207,
+            "localization": 1596,
+            "background_or_class": 20587,
+            "TP": 358,
+            "FN": 1089,
+            "duplicate": 24,
+            "GT": 1447,
+            "precision": 0.01586527808553069,
+            "recall": 0.24740843123704215
+          }
+        }
+      }
+    },
+    "crowd": {
+      "GT": 2004,
+      "median_bbox_width_height": [
+        13.0,
+        17.0
+      ],
+      "results": {
+        "A": {
+          "0.5": {
+            "TP": 1832,
+            "FP": 28059,
+            "background_or_class": 24831,
+            "FN": 172,
+            "localization": 2532,
+            "duplicate": 696,
+            "GT": 2004,
+            "precision": 0.06128935130975879,
+            "recall": 0.9141716566866267
+          },
+          "0.75": {
+            "FP": 29146,
+            "localization": 4207,
+            "background_or_class": 24831,
+            "FN": 1259,
+            "TP": 745,
+            "duplicate": 108,
+            "GT": 2004,
+            "precision": 0.024923890134154095,
+            "recall": 0.3717564870259481
+          }
+        },
+        "B": {
+          "0.5": {
+            "TP": 1821,
+            "FP": 28574,
+            "background_or_class": 25318,
+            "FN": 183,
+            "localization": 2507,
+            "duplicate": 749,
+            "GT": 2004,
+            "precision": 0.0599111696002632,
+            "recall": 0.9086826347305389
+          },
+          "0.75": {
+            "FP": 29657,
+            "localization": 4219,
+            "background_or_class": 25318,
+            "FN": 1266,
+            "TP": 738,
+            "duplicate": 120,
+            "GT": 2004,
+            "precision": 0.024280309261391676,
+            "recall": 0.36826347305389223
+          }
+        }
+      }
+    }
+  },
+  "best_checkpoint_24_image_selection_diagnostic": {
+    "criterion": "Final-decoder VFL+weighted L1/GIoU; per-variant matching, teacher/utility labels not used.",
+    "lower_cost_forced_expert_images": 19,
+    "images": 24,
+    "mean_full_cost": 1.3425910564449925,
+    "mean_posthoc_best_forced_cost": 1.3097099151151876,
+    "warning": "GT-based posthoc oracle over four forced single experts, not a deployable method or an AP improvement; does not establish full-mixture optimal weights."
+  }
+}

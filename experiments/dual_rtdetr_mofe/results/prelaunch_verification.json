@@ -1,0 +1,693 @@
+{
+  "shared_initial_tensors_bitwise_equal": true,
+  "shared_tensor_count": 1401,
+  "original_RGB_bank_all_initial_tensors_equal": true,
+  "torch_cpu_rng_equal": true,
+  "original_expert_router_source_unchanged": true,
+  "direction_parameter_banks_independent": true,
+  "all_module_parameters_gradient_and_update_verified": true,
+  "module_parameter_tensors": 36,
+  "updated_module_parameter_tensors": {
+    "gamma_rgb": true,
+    "gamma_thermal": true,
+    "rgb_from_thermal.project.weight": true,
+    "rgb_from_thermal.experts.0.0.weight": true,
+    "rgb_from_thermal.experts.0.2.weight": true,
+    "rgb_from_thermal.experts.0.4.weight": true,
+    "rgb_from_thermal.experts.1.0.weight": true,
+    "rgb_from_thermal.experts.1.2.weight": true,
+    "rgb_from_thermal.experts.1.4.weight": true,
+    "rgb_from_thermal.experts.2.0.weight": true,
+    "rgb_from_thermal.experts.2.2.weight": true,
+    "rgb_from_thermal.experts.2.4.weight": true,
+    "rgb_from_thermal.experts.3.0.weight": true,
+    "rgb_from_thermal.experts.3.2.weight": true,
+    "rgb_from_thermal.experts.3.4.weight": true,
+    "rgb_from_thermal.router.0.weight": true,
+    "rgb_from_thermal.router.0.bias": true,
+    "rgb_from_thermal.router.3.weight": true,
+    "rgb_from_thermal.router.3.bias": true,
+    "thermal_from_rgb.project.weight": true,
+    "thermal_from_rgb.experts.0.0.weight": true,
+    "thermal_from_rgb.experts.0.2.weight": true,
+    "thermal_from_rgb.experts.0.4.weight": true,
+    "thermal_from_rgb.experts.1.0.weight": true,
+    "thermal_from_rgb.experts.1.2.weight": true,
+    "thermal_from_rgb.experts.1.4.weight": true,
+    "thermal_from_rgb.experts.2.0.weight": true,
+    "thermal_from_rgb.experts.2.2.weight": true,
+    "thermal_from_rgb.experts.2.4.weight": true,
+    "thermal_from_rgb.experts.3.0.weight": true,
+    "thermal_from_rgb.experts.3.2.weight": true,
+    "thermal_from_rgb.experts.3.4.weight": true,
+    "thermal_from_rgb.router.0.weight": true,
+    "thermal_from_rgb.router.0.bias": true,
+    "thermal_from_rgb.router.3.weight": true,
+    "thermal_from_rgb.router.3.bias": true
+  },
+  "ema_eval_finite": true,
+  "ema_smoke_images": 2,
+  "ema_eval_repeatable": true,
+  "detection_only_gamma_gradient_verified": true,
+  "cpu_tests_passed": true,
+  "cpu_tests_log": "artifacts/full_tests.log",
+  "parameters": 85286203,
+  "module_parameters": 431242,
+  "actual_GPU_steps": [
+    {
+      "step": 1,
+      "image_size": [
+        448,
+        576
+      ],
+      "loss": 31.899982452392578,
+      "grad_norm": 65.6522445678711,
+      "seconds": 1.6279053119942546,
+      "module_gradients": {
+        "gamma_rgb": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0008445163839496672
+        },
+        "gamma_thermal": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0013058156473562121
+        },
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.24511371552944183
+        },
+        "rgb_from_thermal.experts.0.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.15370482206344604
+        },
+        "rgb_from_thermal.experts.0.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.01215935405343771
+        },
+        "rgb_from_thermal.experts.0.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.1164969876408577
+        },
+        "rgb_from_thermal.experts.1.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.17524968087673187
+        },
+        "rgb_from_thermal.experts.1.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0065969740971922874
+        },
+        "rgb_from_thermal.experts.1.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.07829254865646362
+        },
+        "rgb_from_thermal.experts.2.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.21299806237220764
+        },
+        "rgb_from_thermal.experts.2.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.006723703350871801
+        },
+        "rgb_from_thermal.experts.2.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.09378226101398468
+        },
+        "rgb_from_thermal.experts.3.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.2160320281982422
+        },
+        "rgb_from_thermal.experts.3.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.004957098513841629
+        },
+        "rgb_from_thermal.experts.3.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.06506922841072083
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.010138234123587608
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 3.197062687831931e-05
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.00267922505736351
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.000215952837606892
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.2335057258605957
+        },
+        "thermal_from_rgb.experts.0.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.14271432161331177
+        },
+        "thermal_from_rgb.experts.0.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.010179989039897919
+        },
+        "thermal_from_rgb.experts.0.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.11940982937812805
+        },
+        "thermal_from_rgb.experts.1.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.2039574533700943
+        },
+        "thermal_from_rgb.experts.1.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.006579449865967035
+        },
+        "thermal_from_rgb.experts.1.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.09623084217309952
+        },
+        "thermal_from_rgb.experts.2.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.16341286897659302
+        },
+        "thermal_from_rgb.experts.2.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.005780837032943964
+        },
+        "thermal_from_rgb.experts.2.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.07156385481357574
+        },
+        "thermal_from_rgb.experts.3.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.22178782522678375
+        },
+        "thermal_from_rgb.experts.3.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0048164501786231995
+        },
+        "thermal_from_rgb.experts.3.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.06801290810108185
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.01313889678567648
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 5.1232353143859655e-05
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.004065060988068581
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0003174001176375896
+        }
+      },
+      "loss_terms": [
+        "loss_vfl",
+        "loss_bbox",
+        "loss_giou",
+        "loss_vfl_aux_0",
+        "loss_bbox_aux_0",
+        "loss_giou_aux_0",
+        "loss_vfl_aux_1",
+        "loss_bbox_aux_1",
+        "loss_giou_aux_1",
+        "loss_vfl_aux_2",
+        "loss_bbox_aux_2",
+        "loss_giou_aux_2",
+        "loss_vfl_aux_3",
+        "loss_bbox_aux_3",
+        "loss_giou_aux_3",
+        "loss_vfl_aux_4",
+        "loss_bbox_aux_4",
+        "loss_giou_aux_4",
+        "loss_vfl_aux_5",
+        "loss_bbox_aux_5",
+        "loss_giou_aux_5",
+        "loss_vfl_dn_0",
+        "loss_bbox_dn_0",
+        "loss_giou_dn_0",
+        "loss_vfl_dn_1",
+        "loss_bbox_dn_1",
+        "loss_giou_dn_1",
+        "loss_vfl_dn_2",
+        "loss_bbox_dn_2",
+        "loss_giou_dn_2",
+        "loss_vfl_dn_3",
+        "loss_bbox_dn_3",
+        "loss_giou_dn_3",
+        "loss_vfl_dn_4",
+        "loss_bbox_dn_4",
+        "loss_giou_dn_4",
+        "loss_vfl_dn_5",
+        "loss_bbox_dn_5",
+        "loss_giou_dn_5"
+      ],
+      "gamma_after_step": [
+        0.10000024735927582,
+        0.09999975562095642
+      ],
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.248897522687912,
+            0.24668465554714203,
+            0.2544388771057129,
+            0.2499789297580719
+          ],
+          "routing_entropy_mean": 1.3862272500991821,
+          "residual_scale_mean": 0.10000000149011612,
+          "candidate_rms_mean": [
+            0.16364650428295135,
+            0.08948473632335663,
+            0.11248445510864258,
+            0.06272289156913757
+          ],
+          "relative_update_mean": 0.004853776190429926
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.2514578104019165,
+            0.25398916006088257,
+            0.24580571055412292,
+            0.2487473487854004
+          ],
+          "routing_entropy_mean": 1.3862167596817017,
+          "residual_scale_mean": 0.10000000149011612,
+          "candidate_rms_mean": [
+            0.15569615364074707,
+            0.10282766819000244,
+            0.08330942690372467,
+            0.06580430269241333
+          ],
+          "relative_update_mean": 0.004654542542994022
+        }
+      }
+    },
+    {
+      "step": 2,
+      "image_size": [
+        576,
+        704
+      ],
+      "loss": 31.863279342651367,
+      "grad_norm": 46.44004440307617,
+      "seconds": 0.6247332822531462,
+      "module_gradients": {
+        "gamma_rgb": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0011824234388768673
+        },
+        "gamma_thermal": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0020261318422853947
+        },
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.21772649884223938
+        },
+        "rgb_from_thermal.experts.0.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.1267482042312622
+        },
+        "rgb_from_thermal.experts.0.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.00910869985818863
+        },
+        "rgb_from_thermal.experts.0.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.10966495424509048
+        },
+        "rgb_from_thermal.experts.1.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.1418420672416687
+        },
+        "rgb_from_thermal.experts.1.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.007184368558228016
+        },
+        "rgb_from_thermal.experts.1.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.06913837790489197
+        },
+        "rgb_from_thermal.experts.2.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.17139455676078796
+        },
+        "rgb_from_thermal.experts.2.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.005785249173641205
+        },
+        "rgb_from_thermal.experts.2.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.08508794754743576
+        },
+        "rgb_from_thermal.experts.3.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.17792820930480957
+        },
+        "rgb_from_thermal.experts.3.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.00415237620472908
+        },
+        "rgb_from_thermal.experts.3.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0556144192814827
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.01310565136373043
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 5.334713205229491e-05
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0033491705544292927
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0003304116253275424
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.2233881801366806
+        },
+        "thermal_from_rgb.experts.0.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.12161777913570404
+        },
+        "thermal_from_rgb.experts.0.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.009056765586137772
+        },
+        "thermal_from_rgb.experts.0.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.09122276306152344
+        },
+        "thermal_from_rgb.experts.1.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.177839994430542
+        },
+        "thermal_from_rgb.experts.1.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.006157243624329567
+        },
+        "thermal_from_rgb.experts.1.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.08146167546510696
+        },
+        "thermal_from_rgb.experts.2.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.13521155714988708
+        },
+        "thermal_from_rgb.experts.2.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.004989338107407093
+        },
+        "thermal_from_rgb.experts.2.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.05648963153362274
+        },
+        "thermal_from_rgb.experts.3.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.19013257324695587
+        },
+        "thermal_from_rgb.experts.3.2.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.0045662312768399715
+        },
+        "thermal_from_rgb.experts.3.4.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.060514964163303375
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.007921875454485416
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 2.6297191652702168e-05
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.002733019180595875
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "nonzero": true,
+          "abs_sum": 0.00021664027008228004
+        }
+      },
+      "loss_terms": [
+        "loss_vfl",
+        "loss_bbox",
+        "loss_giou",
+        "loss_vfl_aux_0",
+        "loss_bbox_aux_0",
+        "loss_giou_aux_0",
+        "loss_vfl_aux_1",
+        "loss_bbox_aux_1",
+        "loss_giou_aux_1",
+        "loss_vfl_aux_2",
+        "loss_bbox_aux_2",
+        "loss_giou_aux_2",
+        "loss_vfl_aux_3",
+        "loss_bbox_aux_3",
+        "loss_giou_aux_3",
+        "loss_vfl_aux_4",
+        "loss_bbox_aux_4",
+        "loss_giou_aux_4",
+        "loss_vfl_aux_5",
+        "loss_bbox_aux_5",
+        "loss_giou_aux_5",
+        "loss_vfl_dn_0",
+        "loss_bbox_dn_0",
+        "loss_giou_dn_0",
+        "loss_vfl_dn_1",
+        "loss_bbox_dn_1",
+        "loss_giou_dn_1",
+        "loss_vfl_dn_2",
+        "loss_bbox_dn_2",
+        "loss_giou_dn_2",
+        "loss_vfl_dn_3",
+        "loss_bbox_dn_3",
+        "loss_giou_dn_3",
+        "loss_vfl_dn_4",
+        "loss_bbox_dn_4",
+        "loss_giou_dn_4",
+        "loss_vfl_dn_5",
+        "loss_bbox_dn_5",
+        "loss_giou_dn_5"
+      ],
+      "gamma_after_step": [
+        0.10000011324882507,
+        0.09999939799308777
+      ],
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24899160861968994,
+            0.24676206707954407,
+            0.2542141377925873,
+            0.2500321865081787
+          ],
+          "routing_entropy_mean": 1.3862287998199463,
+          "residual_scale_mean": 0.10000024735927582,
+          "candidate_rms_mean": [
+            0.17581430077552795,
+            0.09354457259178162,
+            0.12254464626312256,
+            0.06341778486967087
+          ],
+          "relative_update_mean": 0.005137817934155464
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25123530626296997,
+            0.2539404630661011,
+            0.24593833088874817,
+            0.2488858997821808
+          ],
+          "routing_entropy_mean": 1.3862175941467285,
+          "residual_scale_mean": 0.09999975562095642,
+          "candidate_rms_mean": [
+            0.16005539894104004,
+            0.1102331280708313,
+            0.08431710302829742,
+            0.06725433468818665
+          ],
+          "relative_update_mean": 0.004758050199598074
+        }
+      }
+    }
+  ],
+  "peak_memory_allocated_bytes": 4924670464,
+  "peak_memory_reserved_bytes": 5324668928,
+  "pretrained_sha256": "641dc59835d5228e6013ac45acb633592ec825144fb3d78055bc07699f404353",
+  "input_sha256": {
+    "train": "6915b8f260b77364116e9dfb7b277f0540df610c5cc674bed41a7aab90b36dc1",
+    "val": "5aebf4217ba5ca24569fe672b03956723ad47b24a38bcf96a2cdb42e5c0b2c28"
+  },
+  "source_sha256": {
+    "dyfclt/__init__.py": "69d471592bb74706a8fc6fcc5b8c70dc8496462430a1bf2a4a258e98e503b091",
+    "dyfclt/data.py": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "dyfclt/detection_gate.py": "fd3e3df740074503a68e0d50b12af8257788b6cbf93cf1f34a8bafbba0b8b44d",
+    "dyfclt/dual_encoder.py": "9cb6444a472f0e7970b319ced67a41467c50fdd3abeeffc4e0eb18106b60d048",
+    "dyfclt/evaluation.py": "cc3a8d8c3126eafbd278ebe947b281ac21156a5140f20bc6a8d21d008e158061",
+    "dyfclt/frequency.py": "c8565acad3fbc14937cfbd047a5a4144b86fde161a4b6453ed2e3661e2665150",
+    "dyfclt/frequency_training.py": "6ad258c767a1b5125b9883b7c2524e5f33e0dd63cc2b8b3e058f7239d55ccf49",
+    "dyfclt/frequency_utility.py": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "dyfclt/losses.py": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "dyfclt/model.py": "50e2036eb005ebf642d8790666635c22fc9f5ae6bf73ba7a1e88f6587f96cd37",
+    "dyfclt/object_sweep.py": "9f07426e7871ab726c88d526a9fe3f0570716645044d23d4d686408c9f6388d0",
+    "dyfclt/residual_mofe.py": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "dyfclt/runtime.py": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "dyfclt/s3am_mofe.py": "0ff484f00f9d0f62a7330525ed382be1a2e54653cb8ebd25e55b8b89feffcaa3",
+    "dyfclt/spectral_analysis.py": "70ca7e5bfe1827d9e6dc3abd4cf1e8e15053b819bfd9a8fe69e846d14bd7cec2",
+    "dyfclt/sse.py": "0405e857469844f8b12783710eed3231bd876c3ddd50730496c6fe9aeb9ea446",
+    "dyfclt/training.py": "7c313e85986ab7b7253657586c52a408f2b593c8d0c9c7b5a3e3e091effdb99e",
+    "dyfclt/utility_diagnostics.py": "14c6c25b50d25477c35e6e0e97d5a0cf06a02d943c8f01210cbe7f6bfb3dff27",
+    "dyfclt/utility_probe.py": "3779180684bb3a242fc0b9b54e091e0f08d0b0b341c017d65dddcbe8df74d807",
+    "dyfclt/vendor/__init__.py": "45deb0a8089ccccbcdc68086b69deb96e217208404e09cd5bb23b6a050ece960",
+    "dyfclt/vendor/box_ops.py": "a670ce02bce95c3b2304a6708c7c609f281237a7bbe8d63bcef56393a80baa4c",
+    "dyfclt/vendor/common.py": "29ca34ee34f53ccab66e4a1d985df08ede3df9a686d4f84f861010b8f7513d44",
+    "dyfclt/vendor/denoising.py": "2254d6b781879f54684e5726ada5e9c99414873398cf0a42c2e11d691bece595",
+    "dyfclt/vendor/distributed.py": "98859a5fbd06886478de1954fc7aed3ed9c61e38186035e40d4c9b32bb39cc96",
+    "dyfclt/vendor/hybrid_encoder.py": "3469159b0836c1fa0ee315b9abb75fa25deb1f602b6b217848e0325d74d519ec",
+    "dyfclt/vendor/matcher.py": "a4de1b8ccdd427c89779df683fc8255daa5ef07adb9b4985bea8b2f34983afbe",
+    "dyfclt/vendor/presnet.py": "b0e2edefc4c92ddd6c2d94aff1f7d765b20120126cca5bc3ba89d033703bb6e2",
+    "dyfclt/vendor/rtdetr_criterion.py": "c68309955f7c1a1dd121a429bc8f74f38d30365328351410cf775c065bb39fd9",
+    "dyfclt/vendor/rtdetr_decoder.py": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "dyfclt/vendor/tiny_cocoeval.py": "1f18a2f9e51544d220c03792e7e4720169f38af6a66cebf34e58d1bff14f1981",
+    "dyfclt/vendor/utils.py": "dc7f50339c308651b24a236718789e1575e7fc6a4c9f2915b15470bfc393c1ad",
+    "tools/analyze_frequency.py": "4dffba21cac2063322c3866614ff2c1fa4951c33e8987ee82085d8fce24072e2",
+    "tools/detection_gate_preflight.py": "833b9d614d6705d5bf70b548cead311afc42630921e7303637913af23f99cca8",
+    "tools/evaluate.py": "6ed529b0c547d6c912014353e0b20c9633809cbdd166fe840c0ebde12d726e26",
+    "tools/frequency_preflight.py": "e7690bfefcb7c61ab7554ff8f3ac993b8fcd7547ce9b3942ef04597c8ea9b742",
+    "tools/gpu1_guard.sh": "18f539df2543f175e088f3a5e4bf588b80a5e0ba519db31a776b8e307f8b0423",
+    "tools/predict.py": "32e1b314729337e12680cc61e4c0201e2d8daae3aa5897af8600ed3f5b8f13c8",
+    "tools/prepare_mofe_launch.py": "cd0cc92efd3e551f81d193f3db4e2029cfcbb39f7c30d407b69293272ad4c6e4",
+    "tools/prepare_residual_mofe_launch.py": "e37b3e39ed06e08a2d03fc4dcd14f2a5b11b803d3d3171171c7bdc13c12df405",
+    "tools/residual_mofe_preflight.py": "48995f5c849f475619ce27296fbefff82b928541788889571284ccf134c95885",
+    "tools/smoke_test.py": "93e3b87bf4b1ded6a18730744eb9bcd57f4a7e1b08e032a1cab30cb5019a5922",
+    "tools/train.py": "fad54b464253f4e283614698f9483820ad726787c44f4059730a31b0ac2313e6",
+    "tools/train_detection_gate.py": "db2bf5e93b154569dfd43434ccc4f4097ccbd0ed6b2b9fe8ed615619a957af38",
+    "tools/train_detection_gate_fresh_gpu1.sh": "4a891e1ba6cfb6b1119d77574cc0b2806b0a694e7b30a9556692ab700a4b9695",
+    "tools/train_dual_rtdetr_gpu1_seed0.sh": "0f0024fd530c01db5d4f15488b9f005a0803eef55dfe15f6db00c2f6c758d9d9",
+    "tools/train_frequency_utility.py": "48d0166c7afa88398cda3940895772859a917d9140ef4744346f76ed7909fa94",
+    "tools/train_frequency_utility_gpu1.sh": "4ae6254979201e4332fbaf95b896c12db5579f451673aaf0c9b640af89596e49",
+    "tools/train_gpu1_seed0.sh": "ad5fd2ac6cbd5d970920db42eec0316fb8a361228c218973b475a1647f970993",
+    "tools/train_mofe_gpu1.sh": "2d778ff9cee9b2fc361d8c8c30175120b35f6842c147e8df7652a7c2ff615d2c",
+    "tools/train_residual_mofe_gpu1.sh": "b40742b18e7a6d7433e069169a39675c58d25afcefea43a87d577376a4b524a7",
+    "configs/rgbtdroneperson.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_4class_initial.yaml": "3defc8fc7c923ecbbfaaeb0b52c5989c2e5c024d19671c708df90caa27c10daa",
+    "configs/rgbtdroneperson_A_continuation.yaml": "0a2570f4b4dd1e1efcd0a01eb0ac8def2f01b4ed976ca223b251bfaab674861d",
+    "configs/rgbtdroneperson_detection_gate_fresh.yaml": "9aeed1edd1387572768d5da708a639fd91b2fe942445f21572c153b6641847f1",
+    "configs/rgbtdroneperson_dual_rtdetr.yaml": "70ce24cd12a41268f0fed0c868b9a41f3061005df671fc896845fef91522e2b7",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca.yaml": "588d62b18bd8f7b62be16b4ac3f66b138af01c9002038153e7b1b6204c34aafd",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca_ibs.yaml": "a9594acf0d9a5374f9cec1eaee406e53766ff230defd80f9652568b135279a8e",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_sse.yaml": "ed39a500bae7837d72f4541fedf2ccb066595631bd5e3607d4e3a12251a6050e",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca.yaml": "2d4864d22289704a56c34bc3145c27af6e8020f9bc3dd7754915e69d23dd2dde",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca_ibs.yaml": "d1486187015578e1906c6def0756a08e0bef1b7f5aa5ea8441be01ba8be04423",
+    "configs/rgbtdroneperson_dual_rtdetr_sse.yaml": "e25fba2727a6ea8828a53d8c157caea86eafce541b588d37d6241df8140aa60f",
+    "configs/rgbtdroneperson_dual_rtdetr_stable_dfca.yaml": "a7c2041a1754ce81bfdaa01e0b3f9ff06b65719e1fdf7cf2b851c0401bcc82a0",
+    "configs/rgbtdroneperson_dyfclt_compact.yaml": "55bb3c71b13a7846147863912750dff9d5471ce92dd09f90b799c6cb4cae6812",
+    "configs/rgbtdroneperson_dyfclt_group64_raw.yaml": "f616ce559102ac0211809fab6fd8a13db9d877d80a172c83f08d9ec3de66f338",
+    "configs/rgbtdroneperson_dyfclt_rtdetr_recipe.yaml": "4a272d5d3624461bbed0e0a742846f44193cae70f4260d615be5a5a1d4c81663",
+    "configs/rgbtdroneperson_dyfclt_stable_dfca.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_dyfclt_supplement.yaml": "43da3b17adbaba3a96f2a5a783d8bf80dbcf4e88b7635346af1812b5f791a78f",
+    "configs/rgbtdroneperson_frequency_utility.yaml": "80deb5853a1214e9060eda7c5bc450d4b781d26ee1ab0627a8b2817de50b3390",
+    "configs/rgbtdroneperson_legacy_topdown.yaml": "95ac623c4ce4fdbe5eeadb7f52ec235d04b9446b5722432ca3a5e3a7c4111b16",
+    "configs/rgbtdroneperson_residual_mofe.yaml": "549adbca665a8bf3dc8f74f139823ca55a0b3527c78790eb80090e1e2d1dc3d2",
+    "configs/rgbtdroneperson_s3am_mofe.yaml": "6b4bbdf834a8959490c1faa57992d979154682ea1c1775ab933a072def9f52de"
+  },
+  "production_training_launched": false,
+  "AP_measured": false,
+  "recipe_matches_A_except_module_and_output": true,
+  "trained_A_checkpoint_loaded": false,
+  "residual_scale_initial": 0.1,
+  "gamma_after_two_steps": [
+    0.10000011324882507,
+    0.09999939799308777
+  ]
+}

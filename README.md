@@ -17,6 +17,10 @@ question for every Thermal object instance.
 
 ## News
 
+- **2026-10-12:** Added the independent [dual-stream RT-DETR A / bidirectional
+  residual MoFE B experiment](experiments/dual_rtdetr_mofe/README.md), including
+  training-source provenance, reproduction configs, and full seed-0 validation.
+  Original post-encoder P3 B did not outperform A: best AP50 59.1529% vs 59.8387%.
 - **2026-09-29:** Added the complete ICBFC implementation, focused regression
   tests, real-batch GPU smoke test, and fresh three-seed GPU-0 workflow.
 - **2026-09-29:** Preserved the original COXNet cross-stage FPN pairing, RGB

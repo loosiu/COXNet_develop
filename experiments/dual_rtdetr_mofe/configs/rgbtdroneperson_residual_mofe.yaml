@@ -1,0 +1,68 @@
+seed: 0
+model:
+  num_classes: 3
+  hidden_dim: 256
+  num_queries: 300
+  num_decoder_layers: 6
+  num_denoising: 100
+  pretrained: weights/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth
+  architecture: dual_rtdetr
+  use_dfca: false
+  use_sse: false
+  use_fref: false
+  frequency_utility:
+    gate_mode: residual_mofe
+    dim: 64
+    expert_hidden: 64
+    router_hidden: 64
+    residual_scale: 0.1
+loss:
+  mask_weight: 0.0
+  alpha: 0.3
+  beta: 0.7
+  gamma: 0.75
+train:
+  epochs: 20
+  batch_size: 2
+  workers: 4
+  lr: 0.00025
+  weight_decay: 0.0001
+  warmup_steps: 2000
+  warmup_factor: 0.001
+  clip_grad_norm: 0.1
+  resize_sizes:
+  - - 448
+    - 576
+  - - 512
+    - 640
+  - - 576
+    - 704
+  amp: false
+  output_dir: outputs/rgbtdroneperson_residual_mofe_seed0
+  optimizer_groups: rtdetr
+  backbone_lr_multiplier: 0.1
+  ema:
+    enabled: true
+    decay: 0.9999
+    warmups: 2000
+data:
+  image_size:
+  - 512
+  - 640
+  train:
+    ann_file: data/RGBTDronePerson/train_thermal.json
+    image_root: data/RGBTDronePerson/train
+    categories:
+    - person
+    - rider
+    - crowd
+  val:
+    ann_file: data/RGBTDronePerson/val_thermal.json
+    image_root: data/RGBTDronePerson/val
+    categories:
+    - person
+    - rider
+    - crowd
+evaluation:
+  protocol: rgbtdroneperson
+  selection_metric: AP50
