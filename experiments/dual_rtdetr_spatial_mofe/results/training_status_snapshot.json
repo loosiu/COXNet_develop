@@ -1,0 +1,69 @@
+{
+  "captured_utc": "2026-10-13T04:35:06.765739+00:00",
+  "scope": "Snapshot of running fresh spatial MoFE seed0; not final validation",
+  "physical_gpu": 1,
+  "gpu_uuid": "GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2",
+  "pid": 2851996,
+  "epoch": 1,
+  "step": 841,
+  "loss": 21.284557342529297,
+  "gate_statistics": {
+    "rgb_from_thermal": {
+      "routing_weight_mean": [
+        0.2531443238258362,
+        0.24648398160934448,
+        0.24965788424015045,
+        0.2507138252258301
+      ],
+      "weight_spatial_std_mean": [
+        0.006456268951296806,
+        0.007969820871949196,
+        0.0068659111857414246,
+        0.007278889417648315
+      ],
+      "routing_entropy_mean": 1.3858318328857422,
+      "residual_scale_mean": 0.09947456419467926,
+      "residual_multiplier_mean": 0.5,
+      "effective_residual_scale_mean": 0.04973728209733963,
+      "candidate_rms_mean": [
+        0.13053402304649353,
+        0.07713648676872253,
+        0.09265580773353577,
+        0.06300385296344757
+      ],
+      "relative_update_mean": 0.002337645972147584,
+      "valid_fraction_mean": 1.0
+    },
+    "thermal_from_rgb": {
+      "routing_weight_mean": [
+        0.25315138697624207,
+        0.2481345236301422,
+        0.2515297532081604,
+        0.24718435108661652
+      ],
+      "weight_spatial_std_mean": [
+        0.008534397929906845,
+        0.00659271702170372,
+        0.007492111995816231,
+        0.008564488030970097
+      ],
+      "routing_entropy_mean": 1.3857522010803223,
+      "residual_scale_mean": 0.09968092292547226,
+      "residual_multiplier_mean": 0.5,
+      "effective_residual_scale_mean": 0.04984046146273613,
+      "candidate_rms_mean": [
+        0.12111780047416687,
+        0.09203276038169861,
+        0.07441060245037079,
+        0.06672440469264984
+      ],
+      "relative_update_mean": 0.002258763648569584,
+      "valid_fraction_mean": 1.0
+    }
+  },
+  "training_complete": false,
+  "AP_measured": false,
+  "trained_A_B_E_checkpoint_loaded": false,
+  "expected_epochs": 20,
+  "expected_total_updates": 49000
+}

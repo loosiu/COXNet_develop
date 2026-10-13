@@ -1,0 +1,94 @@
+{
+  "scope": "Full1225val; original frozen B-pre EMA20 weights; only residual multipliers changed.",
+  "notes": [
+    "This measures dependence and sensitivity of trained B-pre; off is not trained A.",
+    "No retraining, no checkpoint modification.",
+    "Validation intervention is diagnostic, not independently validated model improvement.",
+    "All-area/tiny AP at0.5/0.75; exact same ignore rules and maxDets1000 as stored metric."
+  ],
+  "checkpoint": {
+    "epoch": 20,
+    "global_step": 49000,
+    "checkpoint": "/data/siwoo/DualRTDETR-PrePyramid-MoFE/outputs/rgbtdroneperson_B_pre_seed0/best.pth",
+    "weights": "ema"
+  },
+  "GPU_uuid": "GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2",
+  "replay_max_difference": {
+    "pred_logits": 0.0,
+    "pred_boxes": 0.0
+  },
+  "variants": {
+    "original_saved": {
+      "metrics": {
+        "AP50": 0.586148182533629,
+        "AP50_tiny": 0.6013099038906539,
+        "AP75": 0.08555217420911405,
+        "AP75_tiny": 0.09269689050357552
+      },
+      "class_AP": {
+        "person": {
+          "AP50": 0.6324476033940138,
+          "AP75": 0.06411493453959652
+        },
+        "rider": {
+          "AP50": 0.6128660303814821,
+          "AP75": 0.06772168561403137
+        },
+        "crowd": {
+          "AP50": 0.5131309138253911,
+          "AP75": 0.12481990247371427
+        }
+      },
+      "images": 1225,
+      "partial": false
+    },
+    "half": {
+      "metrics": {
+        "AP50": 0.5996753783660194,
+        "AP50_tiny": 0.6167092374072528,
+        "AP75": 0.10876976543564232,
+        "AP75_tiny": 0.11643574797999247
+      },
+      "class_AP": {
+        "person": {
+          "AP50": 0.645786636257647,
+          "AP75": 0.07841326292365
+        },
+        "rider": {
+          "AP50": 0.6328973971552434,
+          "AP75": 0.09988495210016589
+        },
+        "crowd": {
+          "AP50": 0.520342101685168,
+          "AP75": 0.1480110812831111
+        }
+      },
+      "images": 1225,
+      "partial": false
+    },
+    "off": {
+      "metrics": {
+        "AP50": 0.5915450637557002,
+        "AP50_tiny": 0.6094558541130806,
+        "AP75": 0.12344191630955934,
+        "AP75_tiny": 0.13288493745812163
+      },
+      "class_AP": {
+        "person": {
+          "AP50": 0.6373683270011006,
+          "AP75": 0.08550509862216257
+        },
+        "rider": {
+          "AP50": 0.6203416226653277,
+          "AP75": 0.12424009206308488
+        },
+        "crowd": {
+          "AP50": 0.5169252416006721,
+          "AP75": 0.1605805582434305
+        }
+      },
+      "images": 1225,
+      "partial": false
+    }
+  }
+}

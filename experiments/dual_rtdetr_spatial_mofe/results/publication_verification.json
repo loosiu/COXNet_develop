@@ -1,0 +1,21 @@
+{
+  "verified_utc": "2026-10-13T04:37:09.226951+00:00",
+  "test_command": "OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 python -m unittest discover -s tests -v",
+  "test_exit_code": 0,
+  "tests_passed": 19,
+  "skipped": 0,
+  "tests_log_sha256": "ca5419bd3913b11f88705097ae58227cd379858f717a973785a8c0fe764ffaad",
+  "byte_identical_source_count": 42,
+  "byte_identical_source_hashes_verified": true,
+  "configs_match_original_except_dataset_paths": true,
+  "model_parameters": 85286203,
+  "module_parameters": 431242,
+  "original_source_tests": {
+    "run": 213,
+    "passed": 212,
+    "skipped": 1
+  },
+  "GPU_preflight_finite_nonzero_gradients_and_updated_tensors": 36,
+  "trained_A_B_E_checkpoint_loaded": false,
+  "new_spatial_AP_measured": false
+}

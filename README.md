@@ -17,6 +17,10 @@ question for every Thermal object instance.
 
 ## News
 
+- **2026-10-13:** Added [pre-pyramid spatial bidirectional MoFE](experiments/dual_rtdetr_spatial_mofe/README.md)
+  with per-location four-expert softmax and `original + 0.5 * learned_gamma * update`,
+  seed-0 training configs, tested source and GPU preflight evidence. The original
+  post-encoder B is preserved. New spatial-model AP is pending.
 - **2026-10-12:** Added the independent [dual-stream RT-DETR A / bidirectional
   residual MoFE B experiment](experiments/dual_rtdetr_mofe/README.md), including
   training-source provenance, reproduction configs, and full seed-0 validation.
