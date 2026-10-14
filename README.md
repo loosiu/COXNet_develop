@@ -17,6 +17,7 @@ question for every Thermal object instance.
 
 ## News
 
+- **2026-10-14:** Added [relation-based bidirectional MoFE](experiments/dual_rtdetr_relation_mofe/README.md): SWT frequency-pair Q/K correlation and sigmoid-modulated V, spatial routing, and direct projected-P3 feature replacement. Includes matched seed-0 training configs, a separate residual control, tests and real-GPU gradient verification. Existing experiments are preserved; 20-epoch training and AP are pending.
 - **2026-10-13:** Added [pre-pyramid spatial bidirectional MoFE](experiments/dual_rtdetr_spatial_mofe/README.md)
   with per-location four-expert softmax and `original + 0.5 * learned_gamma * update`,
   seed-0 training configs, tested source and GPU preflight evidence. The original

@@ -1,0 +1,4 @@
+{"step": 1, "image_size": [448, 576], "loss": 32.969825744628906, "grad_norm": 65.98521423339844, "seconds": 2.298901288770139}
+{"step": 2, "image_size": [576, 704], "loss": 32.1389274597168, "grad_norm": 59.208160400390625, "seconds": 0.5874080844223499}
+{"step": 3, "image_size": [512, 640], "loss": 34.42180633544922, "grad_norm": 48.98451232910156, "seconds": 0.5484323995187879}
+{"verified": true, "updated_tensors": 98, "parameters": 85789497, "module_parameters": 934536, "production_training_launched": false}

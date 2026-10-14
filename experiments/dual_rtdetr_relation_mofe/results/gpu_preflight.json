@@ -1,0 +1,1755 @@
+{
+  "verified_utc": "2026-10-14T02:18:34.387929+00:00",
+  "config": {
+    "data": {
+      "image_size": [
+        512,
+        640
+      ],
+      "train": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train"
+      },
+      "val": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val"
+      }
+    },
+    "evaluation": {
+      "protocol": "rgbtdroneperson",
+      "selection_metric": "AP50"
+    },
+    "loss": {
+      "alpha": 0.3,
+      "beta": 0.7,
+      "gamma": 0.75,
+      "mask_weight": 0.0
+    },
+    "model": {
+      "architecture": "dual_rtdetr",
+      "frequency_utility": {
+        "dim": 64,
+        "expert_hidden": 64,
+        "gate_mode": "relation_mofe",
+        "insertion_point": "projected_p3",
+        "router_hidden": 64,
+        "output_mode": "direct",
+        "correlation_eps": 0.0001
+      },
+      "hidden_dim": 256,
+      "num_classes": 3,
+      "num_decoder_layers": 6,
+      "num_denoising": 100,
+      "num_queries": 300,
+      "pretrained": "weights/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth",
+      "use_dfca": false,
+      "use_fref": false,
+      "use_sse": false
+    },
+    "seed": 0,
+    "train": {
+      "amp": false,
+      "backbone_lr_multiplier": 0.1,
+      "batch_size": 2,
+      "clip_grad_norm": 0.1,
+      "ema": {
+        "decay": 0.9999,
+        "enabled": true,
+        "warmups": 2000
+      },
+      "epochs": 20,
+      "lr": 0.00025,
+      "optimizer_groups": "rtdetr",
+      "output_dir": "outputs/rgbtdroneperson_relation_direct_seed0",
+      "resize_sizes": [
+        [
+          448,
+          576
+        ],
+        [
+          512,
+          640
+        ],
+        [
+          576,
+          704
+        ]
+      ],
+      "warmup_factor": 0.001,
+      "warmup_steps": 2000,
+      "weight_decay": 0.0001,
+      "workers": 4
+    }
+  },
+  "all_A_common_initial_tensors_equal": true,
+  "common_tensor_count": 1401,
+  "CPU_rng_equal": true,
+  "original_spatial_source_preserved": true,
+  "source_sha256": {
+    "dyfclt/__init__.py": "69d471592bb74706a8fc6fcc5b8c70dc8496462430a1bf2a4a258e98e503b091",
+    "dyfclt/data.py": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "dyfclt/detection_gate.py": "fd3e3df740074503a68e0d50b12af8257788b6cbf93cf1f34a8bafbba0b8b44d",
+    "dyfclt/dual_encoder.py": "e0f47756f351af74bcc4c28adefb4f5857dadce1499513ed065b36de3ed7ad0a",
+    "dyfclt/evaluation.py": "cc3a8d8c3126eafbd278ebe947b281ac21156a5140f20bc6a8d21d008e158061",
+    "dyfclt/frequency.py": "c8565acad3fbc14937cfbd047a5a4144b86fde161a4b6453ed2e3661e2665150",
+    "dyfclt/frequency_training.py": "6ad258c767a1b5125b9883b7c2524e5f33e0dd63cc2b8b3e058f7239d55ccf49",
+    "dyfclt/frequency_utility.py": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "dyfclt/losses.py": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "dyfclt/model.py": "2d5afe1588cedefb8d43c484eba41f149cca0dbe2e02a3e8f3983ca50633c30e",
+    "dyfclt/object_sweep.py": "9f07426e7871ab726c88d526a9fe3f0570716645044d23d4d686408c9f6388d0",
+    "dyfclt/relation_mofe.py": "f9b5ecc46a29f4df736be34e73e11c1ad58cba9e4d0ffe9750c6d4072746cf6e",
+    "dyfclt/residual_mamba_mofe.py": "dc871f2edc599e9fcc7bba09f74c83de015c92aaa5aaceeb2d789ae63c97adf0",
+    "dyfclt/residual_mofe.py": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "dyfclt/runtime.py": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "dyfclt/s3am_mofe.py": "e5210d05f3ebacdb474782c08dbee5226496660e1a3259f3177633dfbd27a4f8",
+    "dyfclt/spatial_mofe.py": "e1fe761d4c410d9373a4711946d1c89ade8863d97a35a4fc9edf8f13a49ecad4",
+    "dyfclt/spectral_analysis.py": "70ca7e5bfe1827d9e6dc3abd4cf1e8e15053b819bfd9a8fe69e846d14bd7cec2",
+    "dyfclt/ss2d_context.py": "4458942aa954c7ef6a44ffcbca629b5ae2f6a09515be24727ce8e872c526f75d",
+    "dyfclt/sse.py": "0405e857469844f8b12783710eed3231bd876c3ddd50730496c6fe9aeb9ea446",
+    "dyfclt/training.py": "7c313e85986ab7b7253657586c52a408f2b593c8d0c9c7b5a3e3e091effdb99e",
+    "dyfclt/utility_diagnostics.py": "14c6c25b50d25477c35e6e0e97d5a0cf06a02d943c8f01210cbe7f6bfb3dff27",
+    "dyfclt/utility_probe.py": "3779180684bb3a242fc0b9b54e091e0f08d0b0b341c017d65dddcbe8df74d807",
+    "dyfclt/vendor/__init__.py": "45deb0a8089ccccbcdc68086b69deb96e217208404e09cd5bb23b6a050ece960",
+    "dyfclt/vendor/box_ops.py": "a670ce02bce95c3b2304a6708c7c609f281237a7bbe8d63bcef56393a80baa4c",
+    "dyfclt/vendor/common.py": "29ca34ee34f53ccab66e4a1d985df08ede3df9a686d4f84f861010b8f7513d44",
+    "dyfclt/vendor/denoising.py": "2254d6b781879f54684e5726ada5e9c99414873398cf0a42c2e11d691bece595",
+    "dyfclt/vendor/distributed.py": "98859a5fbd06886478de1954fc7aed3ed9c61e38186035e40d4c9b32bb39cc96",
+    "dyfclt/vendor/hybrid_encoder.py": "3701dcc31fdd093bfa87ad3c42639f12e22fbb7a8dbdf5126be3d2af332e6567",
+    "dyfclt/vendor/matcher.py": "a4de1b8ccdd427c89779df683fc8255daa5ef07adb9b4985bea8b2f34983afbe",
+    "dyfclt/vendor/presnet.py": "b0e2edefc4c92ddd6c2d94aff1f7d765b20120126cca5bc3ba89d033703bb6e2",
+    "dyfclt/vendor/rtdetr_criterion.py": "c68309955f7c1a1dd121a429bc8f74f38d30365328351410cf775c065bb39fd9",
+    "dyfclt/vendor/rtdetr_decoder.py": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "dyfclt/vendor/tiny_cocoeval.py": "1f18a2f9e51544d220c03792e7e4720169f38af6a66cebf34e58d1bff14f1981",
+    "dyfclt/vendor/utils.py": "dc7f50339c308651b24a236718789e1575e7fc6a4c9f2915b15470bfc393c1ad",
+    "tools/analyze_frequency.py": "4dffba21cac2063322c3866614ff2c1fa4951c33e8987ee82085d8fce24072e2",
+    "tools/detection_gate_preflight.py": "833b9d614d6705d5bf70b548cead311afc42630921e7303637913af23f99cca8",
+    "tools/evaluate.py": "6ed529b0c547d6c912014353e0b20c9633809cbdd166fe840c0ebde12d726e26",
+    "tools/frequency_preflight.py": "e7690bfefcb7c61ab7554ff8f3ac993b8fcd7547ce9b3942ef04597c8ea9b742",
+    "tools/gpu1_guard.sh": "18f539df2543f175e088f3a5e4bf588b80a5e0ba519db31a776b8e307f8b0423",
+    "tools/gpu_guard.sh": "faa33cc075e42718ba0147969bd7c65baa1f56cffffb26d9c75ce0a5c0766a38",
+    "tools/mamba_residual_preflight.py": "64e4fe2a2f48251587680203d806d6ece03423ceedbedca31567747ec8f1631a",
+    "tools/pre_pyramid_preflight.py": "cf2872d51784bb6d293da3f23bca51e62dc12ce9c45a99c3ca6cb2a411d0c2b9",
+    "tools/pre_pyramid_protocol.py": "ec747b7280b5c17e24dc2aaf207a7704f7aa7220cd81d14ac42bc8f9f22fa9b4",
+    "tools/pre_pyramid_queue.py": "642d2603b2dd8a532a5d7813f31171e7816620bd7f1ceb537eabb2af0ac7d1e3",
+    "tools/predict.py": "32e1b314729337e12680cc61e4c0201e2d8daae3aa5897af8600ed3f5b8f13c8",
+    "tools/prepare_mamba_residual_launch.py": "2222ae0916da4b6d9e3fdd1c88ef9c45f8df954e11448ef66b9a0dcaf453736b",
+    "tools/prepare_mofe_launch.py": "cd0cc92efd3e551f81d193f3db4e2029cfcbb39f7c30d407b69293272ad4c6e4",
+    "tools/prepare_pre_pyramid_launch.py": "e591a41026def272b1aeb27288c32b1aae4dc5576f08f8c8506d22a44ab8d0ea",
+    "tools/prepare_residual_mofe_launch.py": "e37b3e39ed06e08a2d03fc4dcd14f2a5b11b803d3d3171171c7bdc13c12df405",
+    "tools/prepare_spatial_mofe_launch.py": "5654b83a117ccd710c33da27984c19e634e0fa651bc75d2f951ec0cf39e25bf6",
+    "tools/relation_mofe_preflight.py": "614df91269b2e9458ea9e7db59fb770fb39329bc747d4719859464cce4ba6c3c",
+    "tools/residual_mofe_preflight.py": "48995f5c849f475619ce27296fbefff82b928541788889571284ccf134c95885",
+    "tools/smoke_test.py": "93e3b87bf4b1ded6a18730744eb9bcd57f4a7e1b08e032a1cab30cb5019a5922",
+    "tools/spatial_mofe_preflight.py": "bb5a0dae297c431d771b093afd6de57897377b66b9e9e4444792d0efa4b44179",
+    "tools/spatial_mofe_protocol.py": "fb4aa6c7da6d62253e5cb32756fbb7dcc9b728084bc94a2259d595f2993974cc",
+    "tools/train.py": "72ec30a43ba79f4b48443e82087dcc3beb6f9f849dbcf3f637f8a4f267d68d22",
+    "tools/train_detection_gate.py": "db2bf5e93b154569dfd43434ccc4f4097ccbd0ed6b2b9fe8ed615619a957af38",
+    "tools/train_detection_gate_fresh_gpu1.sh": "4a891e1ba6cfb6b1119d77574cc0b2806b0a694e7b30a9556692ab700a4b9695",
+    "tools/train_dual_rtdetr_gpu1_seed0.sh": "0f0024fd530c01db5d4f15488b9f005a0803eef55dfe15f6db00c2f6c758d9d9",
+    "tools/train_frequency_utility.py": "48d0166c7afa88398cda3940895772859a917d9140ef4744346f76ed7909fa94",
+    "tools/train_frequency_utility_gpu1.sh": "4ae6254979201e4332fbaf95b896c12db5579f451673aaf0c9b640af89596e49",
+    "tools/train_gpu1_seed0.sh": "ad5fd2ac6cbd5d970920db42eec0316fb8a361228c218973b475a1647f970993",
+    "tools/train_mamba_residual_gpu0.sh": "3c89115c4af3a08d7548e7aec09c426f5449c286e82a4722258e4f89a32987da",
+    "tools/train_mofe_gpu1.sh": "2d778ff9cee9b2fc361d8c8c30175120b35f6842c147e8df7652a7c2ff615d2c",
+    "tools/train_pre_pyramid_gpu.sh": "c29c260d4df67af3df40873b280a55611ccd46e2ec6777cd4e30f82b8824791a",
+    "tools/train_residual_mofe_gpu1.sh": "b40742b18e7a6d7433e069169a39675c58d25afcefea43a87d577376a4b524a7",
+    "tools/train_spatial_mofe_gpu1.sh": "2182902aa8bec2307c6d7ea0d6ea54e9fd831d56dce4563f161bda3554b30bd4",
+    "configs/rgbtdroneperson.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_4class_initial.yaml": "3defc8fc7c923ecbbfaaeb0b52c5989c2e5c024d19671c708df90caa27c10daa",
+    "configs/rgbtdroneperson_A_continuation.yaml": "0a2570f4b4dd1e1efcd0a01eb0ac8def2f01b4ed976ca223b251bfaab674861d",
+    "configs/rgbtdroneperson_B_pre_seed0.yaml": "20e56761fd2827737285156f19f86aa62802e00f3eeb7191203d182a4609320a",
+    "configs/rgbtdroneperson_E_pre_seed0.yaml": "aef77e25629790de93cf864d9fd90fd0fa556b04143597dea9d11146f9ddb58a",
+    "configs/rgbtdroneperson_Ev2_seed0.yaml": "6e7004ae451ed3464db7c2e6f9db7079c4bd0b8e9256331693860c663ba312c4",
+    "configs/rgbtdroneperson_detection_gate_fresh.yaml": "9aeed1edd1387572768d5da708a639fd91b2fe942445f21572c153b6641847f1",
+    "configs/rgbtdroneperson_dual_rtdetr.yaml": "70ce24cd12a41268f0fed0c868b9a41f3061005df671fc896845fef91522e2b7",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca.yaml": "588d62b18bd8f7b62be16b4ac3f66b138af01c9002038153e7b1b6204c34aafd",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca_ibs.yaml": "a9594acf0d9a5374f9cec1eaee406e53766ff230defd80f9652568b135279a8e",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_sse.yaml": "ed39a500bae7837d72f4541fedf2ccb066595631bd5e3607d4e3a12251a6050e",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca.yaml": "2d4864d22289704a56c34bc3145c27af6e8020f9bc3dd7754915e69d23dd2dde",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca_ibs.yaml": "d1486187015578e1906c6def0756a08e0bef1b7f5aa5ea8441be01ba8be04423",
+    "configs/rgbtdroneperson_dual_rtdetr_sse.yaml": "e25fba2727a6ea8828a53d8c157caea86eafce541b588d37d6241df8140aa60f",
+    "configs/rgbtdroneperson_dual_rtdetr_stable_dfca.yaml": "a7c2041a1754ce81bfdaa01e0b3f9ff06b65719e1fdf7cf2b851c0401bcc82a0",
+    "configs/rgbtdroneperson_dyfclt_compact.yaml": "55bb3c71b13a7846147863912750dff9d5471ce92dd09f90b799c6cb4cae6812",
+    "configs/rgbtdroneperson_dyfclt_group64_raw.yaml": "f616ce559102ac0211809fab6fd8a13db9d877d80a172c83f08d9ec3de66f338",
+    "configs/rgbtdroneperson_dyfclt_rtdetr_recipe.yaml": "4a272d5d3624461bbed0e0a742846f44193cae70f4260d615be5a5a1d4c81663",
+    "configs/rgbtdroneperson_dyfclt_stable_dfca.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_dyfclt_supplement.yaml": "43da3b17adbaba3a96f2a5a783d8bf80dbcf4e88b7635346af1812b5f791a78f",
+    "configs/rgbtdroneperson_frequency_utility.yaml": "80deb5853a1214e9060eda7c5bc450d4b781d26ee1ab0627a8b2817de50b3390",
+    "configs/rgbtdroneperson_legacy_topdown.yaml": "95ac623c4ce4fdbe5eeadb7f52ec235d04b9446b5722432ca3a5e3a7c4111b16",
+    "configs/rgbtdroneperson_relation_direct_seed0.yaml": "18c526c4bef483ff037e240bc81c41e44b18fe8ebbfcefbb4e3895cc8c15bc9f",
+    "configs/rgbtdroneperson_relation_residual_seed0.yaml": "73039246e0300e410b69d7d034004ebe855389aabfb4ed16545d62dbfbff029b",
+    "configs/rgbtdroneperson_residual_mofe.yaml": "549adbca665a8bf3dc8f74f139823ca55a0b3527c78790eb80090e1e2d1dc3d2",
+    "configs/rgbtdroneperson_s3am_mofe.yaml": "6b4bbdf834a8959490c1faa57992d979154682ea1c1775ab933a072def9f52de",
+    "configs/rgbtdroneperson_spatial_mofe_seed0.yaml": "a6f607e4c8e3a7ab0bd5010dcbf30bf412096635d825cba48c0ba81aced83130"
+  },
+  "all_module_gradients_finite_nonzero": true,
+  "all_module_parameters_updated": true,
+  "optimizer_includes_all_module_parameters": true,
+  "EMA_eval_finite_repeatable": true,
+  "mode": "direct_feature_replacement",
+  "module_parameter_tensors": 98,
+  "changed": {
+    "rgb_from_thermal.project.weight": true,
+    "rgb_from_thermal.router.0.weight": true,
+    "rgb_from_thermal.router.0.bias": true,
+    "rgb_from_thermal.router.3.weight": true,
+    "rgb_from_thermal.router.3.bias": true,
+    "rgb_from_thermal.experts.0.query.0.weight": true,
+    "rgb_from_thermal.experts.0.query.1.weight": true,
+    "rgb_from_thermal.experts.0.key.0.weight": true,
+    "rgb_from_thermal.experts.0.key.1.weight": true,
+    "rgb_from_thermal.experts.0.value.0.weight": true,
+    "rgb_from_thermal.experts.0.value.1.weight": true,
+    "rgb_from_thermal.experts.0.modulator.weight": true,
+    "rgb_from_thermal.experts.0.modulator.bias": true,
+    "rgb_from_thermal.experts.0.norm.weight": true,
+    "rgb_from_thermal.experts.0.norm.bias": true,
+    "rgb_from_thermal.experts.0.output.weight": true,
+    "rgb_from_thermal.experts.1.query.0.weight": true,
+    "rgb_from_thermal.experts.1.query.1.weight": true,
+    "rgb_from_thermal.experts.1.key.0.weight": true,
+    "rgb_from_thermal.experts.1.key.1.weight": true,
+    "rgb_from_thermal.experts.1.value.0.weight": true,
+    "rgb_from_thermal.experts.1.value.1.weight": true,
+    "rgb_from_thermal.experts.1.modulator.weight": true,
+    "rgb_from_thermal.experts.1.modulator.bias": true,
+    "rgb_from_thermal.experts.1.norm.weight": true,
+    "rgb_from_thermal.experts.1.norm.bias": true,
+    "rgb_from_thermal.experts.1.output.weight": true,
+    "rgb_from_thermal.experts.2.query.0.weight": true,
+    "rgb_from_thermal.experts.2.query.1.weight": true,
+    "rgb_from_thermal.experts.2.key.0.weight": true,
+    "rgb_from_thermal.experts.2.key.1.weight": true,
+    "rgb_from_thermal.experts.2.value.0.weight": true,
+    "rgb_from_thermal.experts.2.value.1.weight": true,
+    "rgb_from_thermal.experts.2.modulator.weight": true,
+    "rgb_from_thermal.experts.2.modulator.bias": true,
+    "rgb_from_thermal.experts.2.norm.weight": true,
+    "rgb_from_thermal.experts.2.norm.bias": true,
+    "rgb_from_thermal.experts.2.output.weight": true,
+    "rgb_from_thermal.experts.3.query.0.weight": true,
+    "rgb_from_thermal.experts.3.query.1.weight": true,
+    "rgb_from_thermal.experts.3.key.0.weight": true,
+    "rgb_from_thermal.experts.3.key.1.weight": true,
+    "rgb_from_thermal.experts.3.value.0.weight": true,
+    "rgb_from_thermal.experts.3.value.1.weight": true,
+    "rgb_from_thermal.experts.3.modulator.weight": true,
+    "rgb_from_thermal.experts.3.modulator.bias": true,
+    "rgb_from_thermal.experts.3.norm.weight": true,
+    "rgb_from_thermal.experts.3.norm.bias": true,
+    "rgb_from_thermal.experts.3.output.weight": true,
+    "thermal_from_rgb.project.weight": true,
+    "thermal_from_rgb.router.0.weight": true,
+    "thermal_from_rgb.router.0.bias": true,
+    "thermal_from_rgb.router.3.weight": true,
+    "thermal_from_rgb.router.3.bias": true,
+    "thermal_from_rgb.experts.0.query.0.weight": true,
+    "thermal_from_rgb.experts.0.query.1.weight": true,
+    "thermal_from_rgb.experts.0.key.0.weight": true,
+    "thermal_from_rgb.experts.0.key.1.weight": true,
+    "thermal_from_rgb.experts.0.value.0.weight": true,
+    "thermal_from_rgb.experts.0.value.1.weight": true,
+    "thermal_from_rgb.experts.0.modulator.weight": true,
+    "thermal_from_rgb.experts.0.modulator.bias": true,
+    "thermal_from_rgb.experts.0.norm.weight": true,
+    "thermal_from_rgb.experts.0.norm.bias": true,
+    "thermal_from_rgb.experts.0.output.weight": true,
+    "thermal_from_rgb.experts.1.query.0.weight": true,
+    "thermal_from_rgb.experts.1.query.1.weight": true,
+    "thermal_from_rgb.experts.1.key.0.weight": true,
+    "thermal_from_rgb.experts.1.key.1.weight": true,
+    "thermal_from_rgb.experts.1.value.0.weight": true,
+    "thermal_from_rgb.experts.1.value.1.weight": true,
+    "thermal_from_rgb.experts.1.modulator.weight": true,
+    "thermal_from_rgb.experts.1.modulator.bias": true,
+    "thermal_from_rgb.experts.1.norm.weight": true,
+    "thermal_from_rgb.experts.1.norm.bias": true,
+    "thermal_from_rgb.experts.1.output.weight": true,
+    "thermal_from_rgb.experts.2.query.0.weight": true,
+    "thermal_from_rgb.experts.2.query.1.weight": true,
+    "thermal_from_rgb.experts.2.key.0.weight": true,
+    "thermal_from_rgb.experts.2.key.1.weight": true,
+    "thermal_from_rgb.experts.2.value.0.weight": true,
+    "thermal_from_rgb.experts.2.value.1.weight": true,
+    "thermal_from_rgb.experts.2.modulator.weight": true,
+    "thermal_from_rgb.experts.2.modulator.bias": true,
+    "thermal_from_rgb.experts.2.norm.weight": true,
+    "thermal_from_rgb.experts.2.norm.bias": true,
+    "thermal_from_rgb.experts.2.output.weight": true,
+    "thermal_from_rgb.experts.3.query.0.weight": true,
+    "thermal_from_rgb.experts.3.query.1.weight": true,
+    "thermal_from_rgb.experts.3.key.0.weight": true,
+    "thermal_from_rgb.experts.3.key.1.weight": true,
+    "thermal_from_rgb.experts.3.value.0.weight": true,
+    "thermal_from_rgb.experts.3.value.1.weight": true,
+    "thermal_from_rgb.experts.3.modulator.weight": true,
+    "thermal_from_rgb.experts.3.modulator.bias": true,
+    "thermal_from_rgb.experts.3.norm.weight": true,
+    "thermal_from_rgb.experts.3.norm.bias": true,
+    "thermal_from_rgb.experts.3.output.weight": true
+  },
+  "steps": [
+    {
+      "step": 1,
+      "image_size": [
+        448,
+        576
+      ],
+      "loss": 32.969825744628906,
+      "grad_norm": 65.98521423339844,
+      "seconds": 2.298901288770139,
+      "gradients": {
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 35.57555389404297
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 9.142871856689453
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.003739815205335617
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.0514349937438965
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.012292695231735706
+        },
+        "rgb_from_thermal.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 8.354434967041016
+        },
+        "rgb_from_thermal.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.33987295627594
+        },
+        "rgb_from_thermal.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.1307697296142578
+        },
+        "rgb_from_thermal.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.15048879384994507
+        },
+        "rgb_from_thermal.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 4.517975330352783
+        },
+        "rgb_from_thermal.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6818040609359741
+        },
+        "rgb_from_thermal.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 10.304449081420898
+        },
+        "rgb_from_thermal.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.019861767068505287
+        },
+        "rgb_from_thermal.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.12229261547327042
+        },
+        "rgb_from_thermal.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0026523293927311897
+        },
+        "rgb_from_thermal.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 36.712486267089844
+        },
+        "rgb_from_thermal.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 9.323282241821289
+        },
+        "rgb_from_thermal.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.3795732259750366
+        },
+        "rgb_from_thermal.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.9111183881759644
+        },
+        "rgb_from_thermal.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.09630049020051956
+        },
+        "rgb_from_thermal.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 8.101277351379395
+        },
+        "rgb_from_thermal.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.4096810817718506
+        },
+        "rgb_from_thermal.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 5.837329864501953
+        },
+        "rgb_from_thermal.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.010320823639631271
+        },
+        "rgb_from_thermal.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11758087575435638
+        },
+        "rgb_from_thermal.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0034867683425545692
+        },
+        "rgb_from_thermal.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 33.79865264892578
+        },
+        "rgb_from_thermal.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 21.32440185546875
+        },
+        "rgb_from_thermal.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.984473705291748
+        },
+        "rgb_from_thermal.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.579361915588379
+        },
+        "rgb_from_thermal.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.2574196755886078
+        },
+        "rgb_from_thermal.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 6.2285027503967285
+        },
+        "rgb_from_thermal.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9124220609664917
+        },
+        "rgb_from_thermal.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 14.085768699645996
+        },
+        "rgb_from_thermal.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.025287702679634094
+        },
+        "rgb_from_thermal.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11024647951126099
+        },
+        "rgb_from_thermal.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0034798518754541874
+        },
+        "rgb_from_thermal.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 38.245460510253906
+        },
+        "rgb_from_thermal.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 25.0927734375
+        },
+        "rgb_from_thermal.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.2187620401382446
+        },
+        "rgb_from_thermal.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 3.099820613861084
+        },
+        "rgb_from_thermal.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.15913227200508118
+        },
+        "rgb_from_thermal.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 12.830443382263184
+        },
+        "rgb_from_thermal.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6335248947143555
+        },
+        "rgb_from_thermal.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 9.707683563232422
+        },
+        "rgb_from_thermal.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.01766631379723549
+        },
+        "rgb_from_thermal.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11005958169698715
+        },
+        "rgb_from_thermal.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0032240906730294228
+        },
+        "rgb_from_thermal.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 36.6959228515625
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 42.588531494140625
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 10.220359802246094
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.010114590637385845
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.2437812089920044
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.057262592017650604
+        },
+        "thermal_from_rgb.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 9.940028190612793
+        },
+        "thermal_from_rgb.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.3667970895767212
+        },
+        "thermal_from_rgb.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.4355565309524536
+        },
+        "thermal_from_rgb.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.23947623372077942
+        },
+        "thermal_from_rgb.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 5.416141510009766
+        },
+        "thermal_from_rgb.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.724810004234314
+        },
+        "thermal_from_rgb.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 11.799779891967773
+        },
+        "thermal_from_rgb.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.019767217338085175
+        },
+        "thermal_from_rgb.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11325754225254059
+        },
+        "thermal_from_rgb.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004355245269834995
+        },
+        "thermal_from_rgb.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 42.37778091430664
+        },
+        "thermal_from_rgb.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 10.602691650390625
+        },
+        "thermal_from_rgb.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.4333364963531494
+        },
+        "thermal_from_rgb.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 2.1545774936676025
+        },
+        "thermal_from_rgb.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.10970727354288101
+        },
+        "thermal_from_rgb.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 8.884593963623047
+        },
+        "thermal_from_rgb.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.4497833847999573
+        },
+        "thermal_from_rgb.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 6.885727882385254
+        },
+        "thermal_from_rgb.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.012028107419610023
+        },
+        "thermal_from_rgb.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.10894490778446198
+        },
+        "thermal_from_rgb.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004312913864850998
+        },
+        "thermal_from_rgb.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 38.383262634277344
+        },
+        "thermal_from_rgb.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 24.125682830810547
+        },
+        "thermal_from_rgb.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.1040765047073364
+        },
+        "thermal_from_rgb.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.838214635848999
+        },
+        "thermal_from_rgb.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.24849161505699158
+        },
+        "thermal_from_rgb.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 7.2090044021606445
+        },
+        "thermal_from_rgb.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 1.0732097625732422
+        },
+        "thermal_from_rgb.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 15.301780700683594
+        },
+        "thermal_from_rgb.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.027530930936336517
+        },
+        "thermal_from_rgb.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.13916635513305664
+        },
+        "thermal_from_rgb.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003780677216127515
+        },
+        "thermal_from_rgb.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 42.5644645690918
+        },
+        "thermal_from_rgb.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 27.743892669677734
+        },
+        "thermal_from_rgb.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.3467758893966675
+        },
+        "thermal_from_rgb.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 3.4110381603240967
+        },
+        "thermal_from_rgb.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.16536478698253632
+        },
+        "thermal_from_rgb.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 13.750280380249023
+        },
+        "thermal_from_rgb.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6806064248085022
+        },
+        "thermal_from_rgb.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 10.503803253173828
+        },
+        "thermal_from_rgb.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.02184452675282955
+        },
+        "thermal_from_rgb.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.13564175367355347
+        },
+        "thermal_from_rgb.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004266064614057541
+        },
+        "thermal_from_rgb.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 40.02643585205078
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.25230857729911804,
+            0.24807269871234894,
+            0.2504509687423706,
+            0.2491677850484848
+          ],
+          "weight_spatial_std_mean": [
+            0.006024329923093319,
+            0.0073725576512515545,
+            0.006598248146474361,
+            0.007421107962727547
+          ],
+          "routing_entropy_mean": 1.3858932256698608,
+          "candidate_rms_mean": [
+            0.5731878280639648,
+            0.5798779726028442,
+            0.5768376588821411,
+            0.577338695526123
+          ],
+          "relation_attention_mean": [
+            0.4979173541069031,
+            0.5012830495834351,
+            0.498900830745697,
+            0.5000928044319153
+          ],
+          "relation_saturation_mean": [
+            0.0,
+            5.812872132082703e-06,
+            1.1625745173660107e-05,
+            1.3563368156610522e-05
+          ],
+          "relative_update_mean": 1.0416820049285889,
+          "output_rms_mean": 0.28898441791534424,
+          "source_rms_mean": 0.9983510971069336,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24992188811302185,
+            0.24971240758895874,
+            0.2509051561355591,
+            0.24946057796478271
+          ],
+          "weight_spatial_std_mean": [
+            0.00671632494777441,
+            0.007129631005227566,
+            0.007081319112330675,
+            0.007269318215548992
+          ],
+          "routing_entropy_mean": 1.385892391204834,
+          "candidate_rms_mean": [
+            0.5776712894439697,
+            0.5743083953857422,
+            0.5768361687660217,
+            0.5802974104881287
+          ],
+          "relation_attention_mean": [
+            0.5056939125061035,
+            0.49944448471069336,
+            0.5013877153396606,
+            0.5006853342056274
+          ],
+          "relation_saturation_mean": [
+            9.688120371720288e-06,
+            1.1625744264165405e-05,
+            1.1625744264165405e-05,
+            1.743861685099546e-05
+          ],
+          "relative_update_mean": 1.0430331230163574,
+          "output_rms_mean": 0.28892672061920166,
+          "source_rms_mean": 0.9989246129989624,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 2,
+      "image_size": [
+        576,
+        704
+      ],
+      "loss": 32.1389274597168,
+      "grad_norm": 59.208160400390625,
+      "seconds": 0.5874080844223499,
+      "gradients": {
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 36.39398956298828
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 10.398225784301758
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.008060667663812637
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.3496532440185547
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.039564844220876694
+        },
+        "rgb_from_thermal.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 8.172036170959473
+        },
+        "rgb_from_thermal.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.2673884630203247
+        },
+        "rgb_from_thermal.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.2065761089324951
+        },
+        "rgb_from_thermal.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.20324882864952087
+        },
+        "rgb_from_thermal.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 4.791707992553711
+        },
+        "rgb_from_thermal.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6641325950622559
+        },
+        "rgb_from_thermal.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 10.131263732910156
+        },
+        "rgb_from_thermal.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.020922090858221054
+        },
+        "rgb_from_thermal.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.10958818346261978
+        },
+        "rgb_from_thermal.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003892979584634304
+        },
+        "rgb_from_thermal.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 35.85052490234375
+        },
+        "rgb_from_thermal.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 9.294432640075684
+        },
+        "rgb_from_thermal.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.5493518114089966
+        },
+        "rgb_from_thermal.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.6863596439361572
+        },
+        "rgb_from_thermal.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.09343637526035309
+        },
+        "rgb_from_thermal.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 7.48899507522583
+        },
+        "rgb_from_thermal.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.3919513523578644
+        },
+        "rgb_from_thermal.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 5.469854831695557
+        },
+        "rgb_from_thermal.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.010714608244597912
+        },
+        "rgb_from_thermal.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.1038813367486
+        },
+        "rgb_from_thermal.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0038188579492270947
+        },
+        "rgb_from_thermal.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 32.762996673583984
+        },
+        "rgb_from_thermal.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 20.565444946289062
+        },
+        "rgb_from_thermal.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.0283924341201782
+        },
+        "rgb_from_thermal.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.5617902278900146
+        },
+        "rgb_from_thermal.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.23511245846748352
+        },
+        "rgb_from_thermal.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 6.598531723022461
+        },
+        "rgb_from_thermal.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9806209206581116
+        },
+        "rgb_from_thermal.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 13.641236305236816
+        },
+        "rgb_from_thermal.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.02630726620554924
+        },
+        "rgb_from_thermal.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11078637838363647
+        },
+        "rgb_from_thermal.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003811473259702325
+        },
+        "rgb_from_thermal.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 37.39594268798828
+        },
+        "rgb_from_thermal.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 24.613807678222656
+        },
+        "rgb_from_thermal.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.1207926273345947
+        },
+        "rgb_from_thermal.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 3.019230365753174
+        },
+        "rgb_from_thermal.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.17181378602981567
+        },
+        "rgb_from_thermal.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 12.71830940246582
+        },
+        "rgb_from_thermal.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6054296493530273
+        },
+        "rgb_from_thermal.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 9.641948699951172
+        },
+        "rgb_from_thermal.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.019453933462500572
+        },
+        "rgb_from_thermal.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.11718106269836426
+        },
+        "rgb_from_thermal.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0050082020461559296
+        },
+        "rgb_from_thermal.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 35.80302429199219
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 32.699424743652344
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 9.516817092895508
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.009412987157702446
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.340834140777588
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.05095547437667847
+        },
+        "thermal_from_rgb.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 7.690948486328125
+        },
+        "thermal_from_rgb.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.0649129152297974
+        },
+        "thermal_from_rgb.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.1913836002349854
+        },
+        "thermal_from_rgb.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.20724749565124512
+        },
+        "thermal_from_rgb.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 4.647024154663086
+        },
+        "thermal_from_rgb.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.6341185569763184
+        },
+        "thermal_from_rgb.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 9.713228225708008
+        },
+        "thermal_from_rgb.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.015877053141593933
+        },
+        "thermal_from_rgb.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.09271365404129028
+        },
+        "thermal_from_rgb.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004219968803226948
+        },
+        "thermal_from_rgb.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 33.71305847167969
+        },
+        "thermal_from_rgb.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 8.655832290649414
+        },
+        "thermal_from_rgb.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.1868090629577637
+        },
+        "thermal_from_rgb.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.4786041975021362
+        },
+        "thermal_from_rgb.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.07773898541927338
+        },
+        "thermal_from_rgb.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 6.443367004394531
+        },
+        "thermal_from_rgb.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.3071560859680176
+        },
+        "thermal_from_rgb.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 4.79012393951416
+        },
+        "thermal_from_rgb.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.008338935673236847
+        },
+        "thermal_from_rgb.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.0943649411201477
+        },
+        "thermal_from_rgb.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004420926794409752
+        },
+        "thermal_from_rgb.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 29.672481536865234
+        },
+        "thermal_from_rgb.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 18.510478973388672
+        },
+        "thermal_from_rgb.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.8605628609657288
+        },
+        "thermal_from_rgb.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.5583940744400024
+        },
+        "thermal_from_rgb.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.18845468759536743
+        },
+        "thermal_from_rgb.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 5.5878167152404785
+        },
+        "thermal_from_rgb.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9451366662979126
+        },
+        "thermal_from_rgb.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 11.736846923828125
+        },
+        "thermal_from_rgb.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.02316552773118019
+        },
+        "thermal_from_rgb.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.1025773212313652
+        },
+        "thermal_from_rgb.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003946395590901375
+        },
+        "thermal_from_rgb.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 33.86212158203125
+        },
+        "thermal_from_rgb.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 21.059175491333008
+        },
+        "thermal_from_rgb.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.0582275390625
+        },
+        "thermal_from_rgb.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 2.543565511703491
+        },
+        "thermal_from_rgb.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.11365079879760742
+        },
+        "thermal_from_rgb.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 10.425043106079102
+        },
+        "thermal_from_rgb.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.48044300079345703
+        },
+        "thermal_from_rgb.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 7.525297164916992
+        },
+        "thermal_from_rgb.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.013696549460291862
+        },
+        "thermal_from_rgb.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.09695041924715042
+        },
+        "thermal_from_rgb.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.004120676778256893
+        },
+        "thermal_from_rgb.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 30.774869918823242
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.2520674467086792,
+            0.2482522577047348,
+            0.250309020280838,
+            0.24937129020690918
+          ],
+          "weight_spatial_std_mean": [
+            0.005952049046754837,
+            0.007760399021208286,
+            0.006165992468595505,
+            0.007337312679737806
+          ],
+          "routing_entropy_mean": 1.3858966827392578,
+          "candidate_rms_mean": [
+            0.5782398581504822,
+            0.5776918530464172,
+            0.5764418840408325,
+            0.5764760971069336
+          ],
+          "relation_attention_mean": [
+            0.5196307897567749,
+            0.5018429756164551,
+            0.4977721571922302,
+            0.4999305307865143
+          ],
+          "relation_saturation_mean": [
+            0.0002626361383590847,
+            0.0005560980644077063,
+            0.0002749664708971977,
+            0.0004932133597321808
+          ],
+          "relative_update_mean": 1.0473670959472656,
+          "output_rms_mean": 0.2901926636695862,
+          "source_rms_mean": 0.9919400811195374,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24998542666435242,
+            0.24967369437217712,
+            0.2508772313594818,
+            0.24946361780166626
+          ],
+          "weight_spatial_std_mean": [
+            0.0069883521646261215,
+            0.006518981419503689,
+            0.00698428088799119,
+            0.00771867111325264
+          ],
+          "routing_entropy_mean": 1.3858859539031982,
+          "candidate_rms_mean": [
+            0.5773789286613464,
+            0.575535774230957,
+            0.5747089385986328,
+            0.5795738697052002
+          ],
+          "relation_attention_mean": [
+            0.4950471520423889,
+            0.5007262229919434,
+            0.5004423260688782,
+            0.5006362199783325
+          ],
+          "relation_saturation_mean": [
+            0.00041183317080140114,
+            0.00036991003435105085,
+            0.00027003433206118643,
+            0.0006436434341594577
+          ],
+          "relative_update_mean": 1.0433695316314697,
+          "output_rms_mean": 0.2893567979335785,
+          "source_rms_mean": 0.9949780702590942,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 3,
+      "image_size": [
+        512,
+        640
+      ],
+      "loss": 34.42180633544922,
+      "grad_norm": 48.98451232910156,
+      "seconds": 0.5484323995187879,
+      "gradients": {
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 30.219207763671875
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 7.14273738861084
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.004814459010958672
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 0.8593721389770508
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.017953358590602875
+        },
+        "rgb_from_thermal.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 6.853944301605225
+        },
+        "rgb_from_thermal.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.1404224634170532
+        },
+        "rgb_from_thermal.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.0292975902557373
+        },
+        "rgb_from_thermal.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.17185574769973755
+        },
+        "rgb_from_thermal.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 4.129001140594482
+        },
+        "rgb_from_thermal.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.5349641442298889
+        },
+        "rgb_from_thermal.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 9.004746437072754
+        },
+        "rgb_from_thermal.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.01691957376897335
+        },
+        "rgb_from_thermal.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.1018083244562149
+        },
+        "rgb_from_thermal.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0024013288784772158
+        },
+        "rgb_from_thermal.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 30.73333168029785
+        },
+        "rgb_from_thermal.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 7.6208391189575195
+        },
+        "rgb_from_thermal.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.209202766418457
+        },
+        "rgb_from_thermal.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.5097310543060303
+        },
+        "rgb_from_thermal.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.07524007558822632
+        },
+        "rgb_from_thermal.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 6.564774513244629
+        },
+        "rgb_from_thermal.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.3334192633628845
+        },
+        "rgb_from_thermal.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 4.830827236175537
+        },
+        "rgb_from_thermal.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.008964033797383308
+        },
+        "rgb_from_thermal.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.09400531649589539
+        },
+        "rgb_from_thermal.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003540735226124525
+        },
+        "rgb_from_thermal.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 27.16362762451172
+        },
+        "rgb_from_thermal.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 16.81833839416504
+        },
+        "rgb_from_thermal.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.8095534443855286
+        },
+        "rgb_from_thermal.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.3822274208068848
+        },
+        "rgb_from_thermal.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.17946824431419373
+        },
+        "rgb_from_thermal.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 5.360805511474609
+        },
+        "rgb_from_thermal.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.7771583795547485
+        },
+        "rgb_from_thermal.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 11.80087661743164
+        },
+        "rgb_from_thermal.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.023669280111789703
+        },
+        "rgb_from_thermal.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.10307511687278748
+        },
+        "rgb_from_thermal.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.002620024373754859
+        },
+        "rgb_from_thermal.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 31.15493392944336
+        },
+        "rgb_from_thermal.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 19.91341781616211
+        },
+        "rgb_from_thermal.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9279339909553528
+        },
+        "rgb_from_thermal.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 2.5829367637634277
+        },
+        "rgb_from_thermal.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.13473430275917053
+        },
+        "rgb_from_thermal.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 10.465503692626953
+        },
+        "rgb_from_thermal.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.51055908203125
+        },
+        "rgb_from_thermal.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 8.115495681762695
+        },
+        "rgb_from_thermal.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.013331471011042595
+        },
+        "rgb_from_thermal.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.08585751056671143
+        },
+        "rgb_from_thermal.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0033874446526169777
+        },
+        "rgb_from_thermal.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 29.424907684326172
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 31.208599090576172
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 8.034712791442871
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.006416149437427521
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.007610559463501
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.03120693378150463
+        },
+        "thermal_from_rgb.experts.0.query.0.weight": {
+          "finite": true,
+          "abs_sum": 7.605973720550537
+        },
+        "thermal_from_rgb.experts.0.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.084383249282837
+        },
+        "thermal_from_rgb.experts.0.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.0670439004898071
+        },
+        "thermal_from_rgb.experts.0.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.17181167006492615
+        },
+        "thermal_from_rgb.experts.0.value.0.weight": {
+          "finite": true,
+          "abs_sum": 3.952141046524048
+        },
+        "thermal_from_rgb.experts.0.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.5311310291290283
+        },
+        "thermal_from_rgb.experts.0.modulator.weight": {
+          "finite": true,
+          "abs_sum": 8.942136764526367
+        },
+        "thermal_from_rgb.experts.0.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.01601388119161129
+        },
+        "thermal_from_rgb.experts.0.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.1082882434129715
+        },
+        "thermal_from_rgb.experts.0.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0024969212245196104
+        },
+        "thermal_from_rgb.experts.0.output.weight": {
+          "finite": true,
+          "abs_sum": 31.560558319091797
+        },
+        "thermal_from_rgb.experts.1.query.0.weight": {
+          "finite": true,
+          "abs_sum": 7.886492729187012
+        },
+        "thermal_from_rgb.experts.1.query.1.weight": {
+          "finite": true,
+          "abs_sum": 1.2516846656799316
+        },
+        "thermal_from_rgb.experts.1.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.5271382331848145
+        },
+        "thermal_from_rgb.experts.1.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.07273982465267181
+        },
+        "thermal_from_rgb.experts.1.value.0.weight": {
+          "finite": true,
+          "abs_sum": 6.2381086349487305
+        },
+        "thermal_from_rgb.experts.1.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.3097881078720093
+        },
+        "thermal_from_rgb.experts.1.modulator.weight": {
+          "finite": true,
+          "abs_sum": 4.957007884979248
+        },
+        "thermal_from_rgb.experts.1.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.008595887571573257
+        },
+        "thermal_from_rgb.experts.1.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.09805892407894135
+        },
+        "thermal_from_rgb.experts.1.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0033702910877764225
+        },
+        "thermal_from_rgb.experts.1.output.weight": {
+          "finite": true,
+          "abs_sum": 28.885757446289062
+        },
+        "thermal_from_rgb.experts.2.query.0.weight": {
+          "finite": true,
+          "abs_sum": 18.05667495727539
+        },
+        "thermal_from_rgb.experts.2.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.8041815757751465
+        },
+        "thermal_from_rgb.experts.2.key.0.weight": {
+          "finite": true,
+          "abs_sum": 1.4290634393692017
+        },
+        "thermal_from_rgb.experts.2.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.19028425216674805
+        },
+        "thermal_from_rgb.experts.2.value.0.weight": {
+          "finite": true,
+          "abs_sum": 5.678994178771973
+        },
+        "thermal_from_rgb.experts.2.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9159632921218872
+        },
+        "thermal_from_rgb.experts.2.modulator.weight": {
+          "finite": true,
+          "abs_sum": 12.0868501663208
+        },
+        "thermal_from_rgb.experts.2.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.026088634505867958
+        },
+        "thermal_from_rgb.experts.2.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.10108442604541779
+        },
+        "thermal_from_rgb.experts.2.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.0027631495613604784
+        },
+        "thermal_from_rgb.experts.2.output.weight": {
+          "finite": true,
+          "abs_sum": 32.51899337768555
+        },
+        "thermal_from_rgb.experts.3.query.0.weight": {
+          "finite": true,
+          "abs_sum": 20.42542266845703
+        },
+        "thermal_from_rgb.experts.3.query.1.weight": {
+          "finite": true,
+          "abs_sum": 0.9734351634979248
+        },
+        "thermal_from_rgb.experts.3.key.0.weight": {
+          "finite": true,
+          "abs_sum": 2.5905349254608154
+        },
+        "thermal_from_rgb.experts.3.key.1.weight": {
+          "finite": true,
+          "abs_sum": 0.13173136115074158
+        },
+        "thermal_from_rgb.experts.3.value.0.weight": {
+          "finite": true,
+          "abs_sum": 10.519271850585938
+        },
+        "thermal_from_rgb.experts.3.value.1.weight": {
+          "finite": true,
+          "abs_sum": 0.5305594205856323
+        },
+        "thermal_from_rgb.experts.3.modulator.weight": {
+          "finite": true,
+          "abs_sum": 8.270783424377441
+        },
+        "thermal_from_rgb.experts.3.modulator.bias": {
+          "finite": true,
+          "abs_sum": 0.01570410281419754
+        },
+        "thermal_from_rgb.experts.3.norm.weight": {
+          "finite": true,
+          "abs_sum": 0.09271525591611862
+        },
+        "thermal_from_rgb.experts.3.norm.bias": {
+          "finite": true,
+          "abs_sum": 0.003047176171094179
+        },
+        "thermal_from_rgb.experts.3.output.weight": {
+          "finite": true,
+          "abs_sum": 30.590618133544922
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.25223252177238464,
+            0.24799175560474396,
+            0.2504240870475769,
+            0.2493516504764557
+          ],
+          "weight_spatial_std_mean": [
+            0.005966693162918091,
+            0.0075600771233439445,
+            0.006184041500091553,
+            0.007371433544903994
+          ],
+          "routing_entropy_mean": 1.385892629623413,
+          "candidate_rms_mean": [
+            0.5712960958480835,
+            0.577890157699585,
+            0.5773457288742065,
+            0.5778124332427979
+          ],
+          "relation_attention_mean": [
+            0.48660391569137573,
+            0.5001577734947205,
+            0.4961889386177063,
+            0.5002381801605225
+          ],
+          "relation_saturation_mean": [
+            9.15527380129788e-06,
+            0.00012512206740211695,
+            2.136230432370212e-05,
+            0.0001678466796875
+          ],
+          "relative_update_mean": 1.0447056293487549,
+          "output_rms_mean": 0.2883761525154114,
+          "source_rms_mean": 0.993668794631958,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24996048212051392,
+            0.24992109835147858,
+            0.25079455971717834,
+            0.24932384490966797
+          ],
+          "weight_spatial_std_mean": [
+            0.007037819363176823,
+            0.007131125777959824,
+            0.007283200044184923,
+            0.007595859467983246
+          ],
+          "routing_entropy_mean": 1.3858673572540283,
+          "candidate_rms_mean": [
+            0.5740551948547363,
+            0.5736856460571289,
+            0.5766047239303589,
+            0.5799510478973389
+          ],
+          "relation_attention_mean": [
+            0.4967232644557953,
+            0.5001363754272461,
+            0.49995267391204834,
+            0.5004630088806152
+          ],
+          "relation_saturation_mean": [
+            7.934570021461695e-05,
+            2.288818359375e-05,
+            2.288818359375e-05,
+            6.103515625e-05
+          ],
+          "relative_update_mean": 1.0423623323440552,
+          "output_rms_mean": 0.28839534521102905,
+          "source_rms_mean": 0.9989352226257324,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    }
+  ],
+  "parameters": 85789497,
+  "module_parameters": 934536,
+  "physical_gpu": 1,
+  "gpu_uuid": "GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2",
+  "pretrained_sha256": "641dc59835d5228e6013ac45acb633592ec825144fb3d78055bc07699f404353",
+  "annotation_sha256": {
+    "train": "6915b8f260b77364116e9dfb7b277f0540df610c5cc674bed41a7aab90b36dc1",
+    "val": "5aebf4217ba5ca24569fe672b03956723ad47b24a38bcf96a2cdb42e5c0b2c28"
+  },
+  "trained_A_B_checkpoint_loaded": false,
+  "production_training_launched": false,
+  "AP_measured": false
+}
