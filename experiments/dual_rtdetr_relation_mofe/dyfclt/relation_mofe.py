@@ -117,7 +117,7 @@ class BidirectionalRelationMoFE(nn.Module):
 
     def __init__(self, channels=256, dim=64, expert_hidden=64, router_hidden=64,
                  output_mode='direct', correlation_eps=1e-4,
-                 residual_scale=.1, residual_multiplier=.5):
+                 residual_scale=0., residual_multiplier=.5):
         super().__init__()
         if output_mode not in ('direct', 'residual'):
             raise ValueError('output_mode must be direct or residual')

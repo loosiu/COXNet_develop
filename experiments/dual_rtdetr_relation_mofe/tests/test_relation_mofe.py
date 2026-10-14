@@ -70,6 +70,8 @@ class RelationMoFETests(unittest.TestCase):
 
     def test_residual_control_uses_same_candidate_definition_and_half_scale(self):
         module = self.create('residual'); rgb, thermal = self.inputs(); cache = module.build_cache(rgb, thermal)
+        with torch.no_grad():
+            module.gamma_rgb.fill_(.1); module.gamma_thermal.fill_(.1)
         outputs = module.mix(cache)
         for d, (name, source, gamma) in enumerate([
             ('rgb_from_thermal', rgb, module.gamma_rgb), ('thermal_from_rgb', thermal, module.gamma_thermal),

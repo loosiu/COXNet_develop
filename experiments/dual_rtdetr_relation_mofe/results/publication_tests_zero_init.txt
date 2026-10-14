@@ -1,0 +1,43 @@
+test_E_initial_output_exact_B (test_pre_pyramid.PrePyramidTests) ... There was a problem when trying to write in your cache folder (/home/viplab/.cache/huggingface/hub). You should set the environment variable TRANSFORMERS_CACHE to a writable directory.
+ok
+test_gamma_zero_reproduces_A_all_outputs_and_RNG (test_pre_pyramid.PrePyramidTests) ... ok
+test_only_P3_input_changes_but_all_pyramid_levels_respond (test_pre_pyramid.PrePyramidTests) ... ok
+test_reject_invalid_location (test_pre_pyramid.PrePyramidTests) ... ok
+test_replay_matches_normal_after_pyramid (test_pre_pyramid.PrePyramidTests) ... ok
+test_split_encoder_exact_legacy_forward (test_pre_pyramid.PrePyramidTests) ... ok
+test_valid_mask_applied_at_projected_P3_once (test_pre_pyramid.PrePyramidTests) ... ok
+test_gamma_learns_first_then_detection_gradient_reaches_all_experts (test_relation_learned_residual.LearnedResidualRelationTests) ... ok
+test_logged_strengths_follow_current_parameters_without_half_multiplier (test_relation_learned_residual.LearnedResidualRelationTests) ... ok
+test_primary_recipe_uses_original_feature_with_independent_learned_strengths (test_relation_learned_residual.LearnedResidualRelationTests) ... ok
+test_residual_constructor_default_strength_is_zero (test_relation_learned_residual.LearnedResidualRelationTests) ... ok
+test_zero_strength_preserves_baseline_predictions (test_relation_learned_residual.LearnedResidualRelationTests) ... ok
+test_both_banks_read_original_pair_and_invalid_regions_preserve_source (test_relation_mofe.RelationMoFETests) ... ok
+test_direct_output_is_candidate_mixture_without_original_addition (test_relation_mofe.RelationMoFETests) ... ok
+test_frequency_relation_matches_circular_cross_correlation_oracle (test_relation_mofe.RelationMoFETests) ... ok
+test_invalid_mode_and_unstable_eps_rejected (test_relation_mofe.RelationMoFETests) ... ok
+test_original_projection_router_initialization_and_CPU_rng_preserved (test_relation_mofe.RelationMoFETests) ... ok
+test_relation_depends_on_donor_and_receiver (test_relation_mofe.RelationMoFETests) ... ok
+test_residual_control_uses_same_candidate_definition_and_half_scale (test_relation_mofe.RelationMoFETests) ... ok
+test_zero_and_large_finite_relations_have_finite_gradients (test_relation_mofe.RelationMoFETests) ... ok
+test_A_shared_initialization_and_RNG_unchanged (test_relation_mofe_integration.RelationIntegrationTests) ... ok
+test_EMA_finite_repeatable_without_unused_scale_parameters (test_relation_mofe_integration.RelationIntegrationTests) ... ok
+test_detection_loss_updates_all_relation_experts_and_router (test_relation_mofe_integration.RelationIntegrationTests) ... ok
+test_direct_and_residual_recipes_preserve_A_training (test_relation_mofe_integration.RelationIntegrationTests) ... ok
+test_replay_and_regular_forward_exact_and_all_pyramid_levels_change (test_relation_mofe_integration.RelationIntegrationTests) ... ok
+test_bad_multiplier_or_wrong_expert_axis_is_rejected (test_spatial_mofe.SpatialMoFETests) ... ok
+test_bank_parameters_and_rng_are_identical_to_B (test_spatial_mofe.SpatialMoFETests) ... ok
+test_both_directions_use_original_features_and_half_residual (test_spatial_mofe.SpatialMoFETests) ... ok
+test_detected_signal_trains_router_and_every_expert (test_spatial_mofe.SpatialMoFETests) ... ok
+test_invalid_regions_preserve_original_and_diagnostics_ignore_them (test_spatial_mofe.SpatialMoFETests) ... ok
+test_routing_is_local_and_probabilities_sum_at_each_position (test_spatial_mofe.SpatialMoFETests) ... ok
+test_A_initial_tensors_and_random_state_are_unchanged (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_EMA_is_finite_and_repeatable (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_detection_loss_updates_all_parameters_and_logs_spatial_variation (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_enhancement_is_before_FPN_and_changes_P4_P5 (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_fresh_seed0_recipe_matches_A_and_B_pre (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_replay_and_zero_gamma_bypass_are_exact (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+
+----------------------------------------------------------------------
+Ran 37 tests in 36.181s
+
+OK

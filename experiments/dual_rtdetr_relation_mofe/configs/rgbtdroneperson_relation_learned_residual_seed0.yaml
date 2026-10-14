@@ -32,7 +32,7 @@ model:
     gate_mode: relation_mofe
     insertion_point: projected_p3
     residual_multiplier: 1.0
-    residual_scale: 0.1
+    residual_scale: 0.0
     router_hidden: 64
     output_mode: residual
     correlation_eps: 0.0001

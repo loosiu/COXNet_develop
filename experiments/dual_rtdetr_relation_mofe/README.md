@@ -28,7 +28,7 @@ RGB/T 독립 backbone → 공통 채널 projection → 원래 RGB/T P3
 
 `T_out(p)=T(p)+gamma_T*Delta_T(p)`
 
-`gamma_R/T`는 서로 독립적인 scalar `nn.Parameter`이며 초기값은 각각 0.1이다. 위치별 주파수 선택은 router가 담당하고 전체 보정 강도는 gamma가 담당한다. Gamma에는 범위 제한을 두지 않으며 기존 detection loss로 expert/router와 함께 학습한다. 고정 multiplier는 1.0이므로 추가적인 0.5 감쇠는 없다. Gamma를 0으로 두면 원본 특징과 baseline 예측을 유지한다.
+`gamma_R/T`는 서로 독립적인 scalar `nn.Parameter`이며 초기값은 각각 0.0이다. 위치별 주파수 선택은 router가 담당하고 전체 보정 강도는 gamma가 담당한다. Gamma에는 범위 제한을 두지 않으며 기존 detection loss로 expert/router와 함께 학습한다. 고정 multiplier는 1.0이므로 추가적인 0.5 감쇠는 없다. 초기 출력은 원본 특징과 baseline 예측을 유지한다. 첫 backward에서는 gamma에 탐지 gradient가 전달되고 expert/router의 탐지 gradient는 0이다. Gamma가 갱신되면 다음 step부터 expert/router도 탐지 gradient를 받는다. 별도 학습 단계나 epoch 일정은 추가하지 않는다.
 
 보존한 direct 대조 모드는 `R_new=sum_i w_R_i*F_hat_R_i`, `T_new=sum_i w_T_i*F_hat_T_i`다. Direct 모드에는 gamma와 고정 0.5 multiplier가 없으며, 원본에 보완량을 더하는 경로도 없다. 공통 feature projection/backbone/pyramid/decoder의 초기 파라미터는 A와 같지만 새 P3를 넣으므로 초기 예측이 A와 같지는 않다. Padding/invalid cell만 원래 특징을 반환하며, 모든 유효 위치는 새 후보의 혼합으로 교체한다.
 
@@ -91,7 +91,11 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python tools/evaluate.py \
 
 ## 검증 기록과 현재 상태
 
-현재 learned-residual 설정: 전체 CPU 테스트 230개 중 229개 통과·CUDA 전용 1개 제외, 이 게시 폴더의 테스트 36개 통과. 실제 GPU1 검증에서 gamma 두 개를 포함한 모듈의 파라미터 텐서 100개 모두 유효한 gradient와 갱신을 확인했다.
+0 초기화 검증: 전체 CPU 테스트 231개 중 230개 통과·CUDA 전용 1개 제외, 게시 폴더 테스트 37개 통과. GPU에서 첫 step의 nonzero 탐지 gradient는 gamma 두 개이며 다음 step부터 100개 모두에 전달됐다. 표준 warmup의 세 번 갱신 뒤 65개 tensor가 실제로 값이 바뀌었으며 전체 100개의 값 변경을 주장하지 않는다. 초기 prediction은 baseline과 정확히 동일하다.
+
+현재 0 초기화 설정의 기록: [GPU1 preflight](results/zero_init_gpu_preflight.json), [전체 CPU 테스트](results/full_tests_zero_init.txt), [게시 검증](results/publication_verification_zero_init.json), [게시 테스트 로그](results/publication_tests_zero_init.txt), [source manifest](results/source_manifest_zero_init.json). 초기 prediction이 baseline과 정확히 같은지, 첫 step에서 gamma만 탐지 gradient를 받고 다음 step부터 expert/router에 전달되는지 검증한다.
+
+이전 0.1 초기화 설정의 기록은 아래 learned-residual 자료에 보존한다. 현재 주 설정은 gamma 0 초기화이며 첫 step의 gradient 전달 조건이 달라진다.
 
 **게시 시점에는 20-epoch 본학습과 AP 검증을 수행하지 않았다.** 실제 GPU 갱신 확인은 구현 검증이며 성능 향상 근거가 아니다.
 
@@ -99,7 +103,7 @@ CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 python tools/evaluate.py \
 - 직접 교체형을 구현한 시점의 [실제 GPU1 preflight](results/gpu_preflight.json): batch 2·세 해상도로 세 번의 검출 loss 갱신. 모듈의 파라미터 텐서 98개 모두 유한한 nonzero gradient와 값 변경 확인, EMA 평가 유한·반복 가능. [물리 GPU 매핑](results/physical_gpu_mapping.json), [stdout](results/gpu_preflight_stdout.txt).
 - A의 공통 초기 state tensor 1,401개와 CPU RNG가 동일하며 기존 spatial 실험의 원본 소스 125개를 보존했다. Direct 모드의 초기 예측은 A와 다르다.
 - 기존 게시 기록은 [direct 게시 검증](results/publication_verification.json), [direct 게시 테스트 로그](results/publication_tests.txt), [direct source manifest](results/source_manifest.json)에 보존한다. 해당 hash는 그 시점의 source archive에 대응한다.
-- 현재 learned-residual 설정의 검증은 [GPU1 preflight](results/learned_residual_gpu_preflight.json), [전체 CPU 테스트](results/full_tests_learned_residual.txt), [게시 검증](results/publication_verification_learned_residual.json), [게시 테스트 로그](results/publication_tests_learned_residual.txt), [source manifest](results/source_manifest_learned_residual.json)에 기록한다.
+- 이전 0.1 초기화 learned-residual 설정의 검증은 [GPU1 preflight](results/learned_residual_gpu_preflight.json), [전체 CPU 테스트](results/full_tests_learned_residual.txt), [게시 검증](results/publication_verification_learned_residual.json), [게시 테스트 로그](results/publication_tests_learned_residual.txt), [source manifest](results/source_manifest_learned_residual.json)에 기록한다.
 - [training_snapshot](training_snapshot/)에는 실제 실험실의 GPU guard·preflight와 전체 원본 코드/설정/테스트 archive를 보존했다. 이 preflight는 절대 경로와 원본 hash 기록이 필요하므로 일반 checkout에서는 위의 CLI를 사용한다. 검증에서 갱신한 가중치는 저장하거나 본학습에 재사용하지 않는다.
 
 Model·학습·평가 소스는 검증한 원본과 byte 단위로 동일하다. YAML은 데이터 경로만 상대 경로로 바꿨고, integration 테스트의 A 설정 참조는 포함된 fixture로 바꿨다. 데이터와 pretrained·학습 checkpoint는 Git에 포함하지 않는다. 라이선스와 출처는 [third_party](third_party/)에 있다.

@@ -41,8 +41,8 @@ def main():
     assert torch.cuda.device_count() == 1 and os.environ['RESIDUAL_GPU_UUID'] == 'GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2'
     model.cuda().train(); module = model.encoder.frequency_module
     assert module.output_mode == 'residual' and module.residual_multiplier == 1.
-    torch.testing.assert_close(module.gamma_rgb, torch.tensor(.1, device='cuda:0'))
-    torch.testing.assert_close(module.gamma_thermal, torch.tensor(.1, device='cuda:0'))
+    torch.testing.assert_close(module.gamma_rgb, torch.tensor(0., device='cuda:0'))
+    torch.testing.assert_close(module.gamma_thermal, torch.tensor(0., device='cuda:0'))
     params = dict(module.named_parameters()); assert len(params) == 100
     assert {'gamma_rgb', 'gamma_thermal'} <= set(params)
     before = {name: p.detach().clone() for name, p in params.items()}
@@ -58,6 +58,18 @@ def main():
         rgb, thermal, targets = resize_training_batch(*next(batches), [size])
         rgb, thermal, targets = rgb.cuda(), thermal.cuda(), move_targets(targets, 'cuda:0')
         set_learning_rate(optimizer, cfg['train']['lr'], warmup_factor(index, 2000, .001))
+        if index == 0:
+            model.eval()
+            with torch.no_grad():
+                initial = model(rgb, thermal)
+                try:
+                    model.encoder.frequency_module = None
+                    baseline_out = model(rgb, thermal)
+                finally:
+                    model.encoder.frequency_module = module
+                assert all(torch.equal(initial[k], baseline_out[k]) for k in ['pred_logits', 'pred_boxes'])
+            del initial, baseline_out
+            model.train()
         optimizer.zero_grad(set_to_none=True); started = time.monotonic()
         out = model(rgb, thermal, targets, return_frequency_aux=True)
         assert out['frequency_aux']['routing_weights'].shape == (2, 2, 4, size[0]//8, size[1]//8)
@@ -66,9 +78,15 @@ def main():
         loss.backward()
         grads = {name: dict(finite=p.grad is not None and bool(torch.isfinite(p.grad).all()),
                     abs_sum=float(p.grad.abs().sum()) if p.grad is not None else None) for name, p in params.items()}
-        assert all(v['finite'] and v['abs_sum'] > 0 for v in grads.values()), grads
+        assert all(v['finite'] for v in grads.values()), grads
+        if index == 0:
+            assert all(v['abs_sum'] > 0 if name in ('gamma_rgb', 'gamma_thermal')
+                       else v['abs_sum'] == 0 for name, v in grads.items()), grads
+        else:
+            assert all(v['abs_sum'] > 0 for v in grads.values()), grads
         norm, applied = apply_optimizer_step(model, optimizer, scaler, .1, ema)
         assert applied and torch.isfinite(norm); torch.cuda.synchronize()
+        assert float(module.gamma_rgb.detach()) != 0 and float(module.gamma_thermal.detach()) != 0
         row = dict(step=index+1, image_size=list(size), loss=float(loss.detach()), grad_norm=float(norm),
                    strengths_after_update=[float(module.gamma_rgb.detach()), float(module.gamma_thermal.detach())],
                    seconds=time.monotonic()-started, gradients=grads, gate_statistics=gate_statistics(out['frequency_aux']))
@@ -76,7 +94,7 @@ def main():
         print(json.dumps({k: row[k] for k in ['step', 'image_size', 'loss', 'grad_norm', 'seconds', 'strengths_after_update']}), flush=True)
         del out, losses, loss
     changed = {name: not torch.equal(p, before[name]) for name, p in params.items()}
-    assert all(changed.values()), changed
+    assert changed['gamma_rgb'] and changed['gamma_thermal'], changed
     with torch.no_grad():
         r, t, _ = next(iter(make_loader(val, 2, 0)))
         left, right = ema.module(r.cuda(), t.cuda()), ema.module(r.cuda(), t.cuda())
@@ -84,7 +102,9 @@ def main():
     proof = dict(verified_utc=datetime.now(timezone.utc).isoformat(), config=cfg,
         all_A_common_initial_tensors_equal=True, common_tensor_count=common_count, CPU_rng_equal=True,
         original_spatial_source_preserved=True, source_sha256=source_manifest(ROOT),
-        all_module_gradients_finite_nonzero=True, all_module_parameters_updated=True,
+        all_module_gradients_finite=True, first_step_gamma_only_gradients=True,
+        subsequent_all_module_gradients_nonzero=True, initial_predictions_equal_baseline=True,
+        gamma_updated_on_first_step=True, all_module_parameters_updated=all(changed.values()),
         optimizer_includes_all_module_parameters=True, EMA_eval_finite_repeatable=True,
         mode='original_plus_learned_residual', residual_multiplier=1.,
         initial_strengths=[float(before['gamma_rgb']), float(before['gamma_thermal'])],
@@ -93,7 +113,7 @@ def main():
         physical_gpu=1, gpu_uuid=os.environ['RESIDUAL_GPU_UUID'], pretrained_sha256=sha256(ROOT/cfg['model']['pretrained']),
         annotation_sha256={s: sha256(cfg['data'][s]['ann_file']) for s in ['train', 'val']},
         trained_A_B_checkpoint_loaded=False, production_training_launched=False, AP_measured=False)
-    (ROOT/'artifacts/verification_relation_learned_residual_gpu1.json').write_text(json.dumps(proof, indent=2)+'\n')
+    (ROOT/'artifacts/verification_relation_zero_init_gpu1.json').write_text(json.dumps(proof, indent=2)+'\n')
     print(json.dumps(dict(verified=True, updated_tensors=sum(changed.values()), parameters=proof['parameters'],
                           module_parameters=proof['module_parameters'], production_training_launched=False)), flush=True)
 

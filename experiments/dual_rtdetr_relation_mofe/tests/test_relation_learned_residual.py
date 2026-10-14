@@ -24,7 +24,7 @@ class LearnedResidualRelationTests(unittest.TestCase):
         self.assertTrue(validate_detection_config(cfg))
         options = cfg['model']['frequency_utility']
         self.assertEqual(options['output_mode'], 'residual')
-        self.assertEqual(options['residual_scale'], .1)
+        self.assertEqual(options['residual_scale'], 0.)
         self.assertEqual(options['residual_multiplier'], 1.)
         baseline = json.loads((ROOT/'results/A_original_config.json').read_text())
         current = copy.deepcopy(cfg); current['model'].pop('frequency_utility')
@@ -34,6 +34,11 @@ class LearnedResidualRelationTests(unittest.TestCase):
         for value in (current, baseline): value['train'].pop('output_dir', None)
         self.assertEqual(current, baseline)
         self.assertNotEqual(cfg['train']['output_dir'], load_config(ROOT/'configs/rgbtdroneperson_relation_residual_seed0.yaml')['train']['output_dir'])
+
+    def test_residual_constructor_default_strength_is_zero(self):
+        module = BidirectionalRelationMoFE(channels=8, dim=4, expert_hidden=4, router_hidden=4, output_mode='residual')
+        self.assertEqual(float(module.gamma_rgb), 0.)
+        self.assertEqual(float(module.gamma_thermal), 0.)
 
     def test_logged_strengths_follow_current_parameters_without_half_multiplier(self):
         module = BidirectionalRelationMoFE(channels=8, dim=4, expert_hidden=4,
@@ -51,7 +56,7 @@ class LearnedResidualRelationTests(unittest.TestCase):
             self.assertEqual(values[name]['residual_multiplier_mean'], 1.)
         self.assertFalse(aux['diagnostics']['residual_scale'].requires_grad)
 
-    def test_detection_loss_updates_both_strengths_and_all_experts(self):
+    def test_gamma_learns_first_then_detection_gradient_reaches_all_experts(self):
         torch.manual_seed(0)
         cfg = load_config(CONFIG)
         options = dict(cfg['model']['frequency_utility'], dim=8, expert_hidden=8, router_hidden=8)
@@ -60,6 +65,8 @@ class LearnedResidualRelationTests(unittest.TestCase):
         module = model.encoder.frequency_module
         params = dict(module.named_parameters())
         self.assertEqual(len(params), 100)
+        self.assertEqual(float(module.gamma_rgb), 0.)
+        self.assertEqual(float(module.gamma_thermal), 0.)
         before = {name: p.detach().clone() for name, p in params.items()}
         optimizer = build_optimizer(model, cfg['train']); ema = ModelEMA(model)
         ids = {id(p) for group in optimizer.param_groups for p in group['params']}
@@ -67,15 +74,23 @@ class LearnedResidualRelationTests(unittest.TestCase):
         self.assertIsNot(module.gamma_rgb, module.gamma_thermal)
         r, t = torch.randn(2, 3, 64, 96), torch.randn(2, 3, 64, 96)
         targets = [dict(labels=torch.tensor([0]), boxes=torch.tensor([[.5, .5, .2, .2]])) for _ in range(2)]
-        out = model(r, t, targets, return_frequency_aux=True)
-        losses = build_criterion(2, mask_weight=0)(out, targets)
-        self.assertFalse(any('utility' in key or 'kl' in key or 'mask' in key for key in losses))
-        sum(losses.values()).backward(); optimizer.step(); ema.update(model)
-        for name, p in params.items():
-            self.assertIsNotNone(p.grad, name)
-            self.assertTrue(torch.isfinite(p.grad).all(), name)
-            self.assertGreater(float(p.grad.abs().sum()), 0, name)
-            self.assertFalse(torch.equal(p, before[name]), name)
+        criterion = build_criterion(2, mask_weight=0)
+        for step in range(2):
+            optimizer.zero_grad(set_to_none=True)
+            out = model(r, t, targets, return_frequency_aux=True)
+            losses = criterion(out, targets)
+            self.assertFalse(any('utility' in key or 'kl' in key or 'mask' in key for key in losses))
+            sum(losses.values()).backward()
+            for name, p in params.items():
+                self.assertIsNotNone(p.grad, name)
+                self.assertTrue(torch.isfinite(p.grad).all(), name)
+                if step == 0 and name not in ('gamma_rgb', 'gamma_thermal'):
+                    self.assertEqual(float(p.grad.abs().sum()), 0., name)
+                else:
+                    self.assertGreater(float(p.grad.abs().sum()), 0., name)
+            optimizer.step(); ema.update(model)
+        self.assertNotEqual(float(module.gamma_rgb), 0.)
+        self.assertNotEqual(float(module.gamma_thermal), 0.)
         self.assertFalse(torch.equal(ema.module.encoder.frequency_module.gamma_rgb, before['gamma_rgb']))
         self.assertFalse(torch.equal(ema.module.encoder.frequency_module.gamma_thermal, before['gamma_thermal']))
 
@@ -87,7 +102,8 @@ class LearnedResidualRelationTests(unittest.TestCase):
             num_denoising=4, architecture='dual_rtdetr', pretrained=False, frequency_utility=options).eval()
         r, t = torch.randn(2, 3, 64, 96), torch.randn(2, 3, 64, 96)
         with torch.no_grad():
-            model.encoder.frequency_module.gamma_rgb.zero_(); model.encoder.frequency_module.gamma_thermal.zero_()
+            self.assertEqual(float(model.encoder.frequency_module.gamma_rgb), 0.)
+            self.assertEqual(float(model.encoder.frequency_module.gamma_thermal), 0.)
             zero = model(r, t)
             model.encoder.frequency_module = None
             baseline = model(r, t)
