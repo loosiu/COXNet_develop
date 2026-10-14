@@ -1,0 +1,121 @@
+"""Three real detection updates for the CNN-only spatial MoFE with zero residual initialization.
+
+This is validation only. It never starts production training or saves updated
+weights. A future train.py run initializes independently from public backbone
+pretrained weights, using the same A recipe.
+"""
+from datetime import datetime, timezone
+import copy
+import gc
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(ROOT))
+import torch
+from dyfclt.model import DyFCLT
+from dyfclt.losses import build_criterion
+from dyfclt.runtime import (load_config, seed_everything, make_dataset, make_loader,
+    move_targets, resize_training_batch, warmup_factor, apply_optimizer_step)
+from dyfclt.training import build_optimizer, build_ema, set_learning_rate
+from dyfclt.frequency_training import sha256, source_manifest, gate_statistics
+
+
+def main():
+    cfg = load_config(ROOT/'configs/rgbtdroneperson_cnn_mofe_zero_seed0.yaml')
+    reference = json.loads(Path('/data/siwoo/DyFCLT/outputs/rgbtdroneperson_dual_rtdetr_seed0/config.json').read_text())
+    current, baseline = copy.deepcopy(cfg), copy.deepcopy(reference)
+    current['model'].pop('frequency_utility')
+    for c in [current, baseline]: c['train'].pop('output_dir', None)
+    assert current == baseline
+    frozen = json.loads((ROOT/'artifacts/preserved_experiments_sha256.json').read_text())
+    assert all(sha256(path) == digest for path, digest in frozen.items())
+    seed_everything(0); a = DyFCLT(**reference['model']); rng = torch.get_rng_state()
+    seed_everything(0); model = DyFCLT(**cfg['model'])
+    assert torch.equal(rng, torch.get_rng_state())
+    target = model.state_dict()
+    for name, value in a.state_dict().items(): assert torch.equal(value, target[name]), name
+    common_count = len(a.state_dict()); del a, target; gc.collect()
+    assert torch.cuda.device_count() == 1 and os.environ['RESIDUAL_GPU_UUID'] == 'GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2'
+    model.cuda().train(); module = model.encoder.frequency_module
+    assert module.gate_mode == 'spatial_mofe' and module.residual_multiplier == 1.
+    torch.testing.assert_close(module.gamma_rgb, torch.tensor(0., device='cuda:0'))
+    torch.testing.assert_close(module.gamma_thermal, torch.tensor(0., device='cuda:0'))
+    params = dict(module.named_parameters()); assert len(params) == 36
+    assert {'gamma_rgb', 'gamma_thermal'} <= set(params)
+    before = {name: p.detach().clone() for name, p in params.items()}
+    optimizer = build_optimizer(model, cfg['train']); ema = build_ema(model, cfg['train'])
+    ids = {id(p) for group in optimizer.param_groups for p in group['params']}
+    assert all(id(p) in ids for p in params.values())
+    train, val = make_dataset(cfg, 'train', training=True), make_dataset(cfg, 'val')
+    assert len(train) == 4900 and len(val) == 1225 and train.category_ids == val.category_ids == [0, 1, 2]
+    criterion = build_criterion(3, **cfg['loss']).cuda()
+    scaler = torch.cuda.amp.GradScaler(enabled=False); batches = iter(make_loader(train, 2, 0, True))
+    steps = []
+    for index, size in enumerate([(448, 576), (576, 704), (512, 640)]):
+        rgb, thermal, targets = resize_training_batch(*next(batches), [size])
+        rgb, thermal, targets = rgb.cuda(), thermal.cuda(), move_targets(targets, 'cuda:0')
+        set_learning_rate(optimizer, cfg['train']['lr'], warmup_factor(index, 2000, .001))
+        if index == 0:
+            model.eval()
+            with torch.no_grad():
+                initial = model(rgb, thermal)
+                try:
+                    model.encoder.frequency_module = None
+                    baseline_out = model(rgb, thermal)
+                finally:
+                    model.encoder.frequency_module = module
+                assert all(torch.equal(initial[k], baseline_out[k]) for k in ['pred_logits', 'pred_boxes'])
+            del initial, baseline_out
+            model.train()
+        optimizer.zero_grad(set_to_none=True); started = time.monotonic()
+        out = model(rgb, thermal, targets, return_frequency_aux=True)
+        assert out['frequency_aux']['routing_weights'].shape == (2, 2, 4, size[0]//8, size[1]//8)
+        losses = criterion(out, targets); loss = sum(losses.values()); assert torch.isfinite(loss)
+        assert not any('utility' in name or 'kl' in name or 'mask' in name for name in losses)
+        loss.backward()
+        grads = {name: dict(finite=p.grad is not None and bool(torch.isfinite(p.grad).all()),
+                    abs_sum=float(p.grad.abs().sum()) if p.grad is not None else None) for name, p in params.items()}
+        assert all(v['finite'] for v in grads.values()), grads
+        if index == 0:
+            assert all(v['abs_sum'] > 0 if name in ('gamma_rgb', 'gamma_thermal')
+                       else v['abs_sum'] == 0 for name, v in grads.items()), grads
+        else:
+            assert all(v['abs_sum'] > 0 for v in grads.values()), grads
+        norm, applied = apply_optimizer_step(model, optimizer, scaler, .1, ema)
+        assert applied and torch.isfinite(norm); torch.cuda.synchronize()
+        assert float(module.gamma_rgb.detach()) != 0 and float(module.gamma_thermal.detach()) != 0
+        row = dict(step=index+1, image_size=list(size), loss=float(loss.detach()), grad_norm=float(norm),
+                   strengths_after_update=[float(module.gamma_rgb.detach()), float(module.gamma_thermal.detach())],
+                   seconds=time.monotonic()-started, gradients=grads, gate_statistics=gate_statistics(out['frequency_aux']))
+        steps.append(row)
+        print(json.dumps({k: row[k] for k in ['step', 'image_size', 'loss', 'grad_norm', 'seconds', 'strengths_after_update']}), flush=True)
+        del out, losses, loss
+    changed = {name: not torch.equal(p, before[name]) for name, p in params.items()}
+    assert changed['gamma_rgb'] and changed['gamma_thermal'], changed
+    with torch.no_grad():
+        r, t, _ = next(iter(make_loader(val, 2, 0)))
+        left, right = ema.module(r.cuda(), t.cuda()), ema.module(r.cuda(), t.cuda())
+        assert all(torch.equal(left[k], right[k]) and torch.isfinite(left[k]).all() for k in ['pred_logits', 'pred_boxes'])
+    proof = dict(verified_utc=datetime.now(timezone.utc).isoformat(), config=cfg,
+        all_A_common_initial_tensors_equal=True, common_tensor_count=common_count, CPU_rng_equal=True,
+        original_spatial_source_preserved=True, source_sha256=source_manifest(ROOT),
+        all_module_gradients_finite=True, first_step_gamma_only_gradients=True,
+        subsequent_all_module_gradients_nonzero=True, initial_predictions_equal_baseline=True,
+        gamma_updated_on_first_step=True, all_module_parameters_updated=all(changed.values()),
+        optimizer_includes_all_module_parameters=True, EMA_eval_finite_repeatable=True,
+        mode='cnn_spatial_mofe_zero_init', added_attention=False, residual_multiplier=1.,
+        initial_strengths=[float(before['gamma_rgb']), float(before['gamma_thermal'])],
+        final_strengths=[float(module.gamma_rgb.detach()), float(module.gamma_thermal.detach())], module_parameter_tensors=len(params), changed=changed, steps=steps,
+        parameters=sum(p.numel() for p in model.parameters()), module_parameters=sum(p.numel() for p in module.parameters()),
+        physical_gpu=1, gpu_uuid=os.environ['RESIDUAL_GPU_UUID'], pretrained_sha256=sha256(ROOT/cfg['model']['pretrained']),
+        annotation_sha256={s: sha256(cfg['data'][s]['ann_file']) for s in ['train', 'val']},
+        trained_A_B_checkpoint_loaded=False, production_training_launched=False, AP_measured=False)
+    (ROOT/'artifacts/verification_cnn_zero_init_gpu1.json').write_text(json.dumps(proof, indent=2)+'\n')
+    print(json.dumps(dict(verified=True, updated_tensors=sum(changed.values()), parameters=proof['parameters'],
+                          module_parameters=proof['module_parameters'], production_training_launched=False)), flush=True)
+
+
+if __name__ == '__main__': main()

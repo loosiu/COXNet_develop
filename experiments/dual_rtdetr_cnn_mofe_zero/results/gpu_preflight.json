@@ -1,0 +1,913 @@
+{
+  "verified_utc": "2026-10-14T04:36:59.496001+00:00",
+  "config": {
+    "data": {
+      "image_size": [
+        512,
+        640
+      ],
+      "train": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train"
+      },
+      "val": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val"
+      }
+    },
+    "evaluation": {
+      "protocol": "rgbtdroneperson",
+      "selection_metric": "AP50"
+    },
+    "loss": {
+      "alpha": 0.3,
+      "beta": 0.7,
+      "gamma": 0.75,
+      "mask_weight": 0.0
+    },
+    "model": {
+      "architecture": "dual_rtdetr",
+      "frequency_utility": {
+        "dim": 64,
+        "expert_hidden": 64,
+        "gate_mode": "spatial_mofe",
+        "insertion_point": "projected_p3",
+        "residual_multiplier": 1.0,
+        "residual_scale": 0.0,
+        "router_hidden": 64
+      },
+      "hidden_dim": 256,
+      "num_classes": 3,
+      "num_decoder_layers": 6,
+      "num_denoising": 100,
+      "num_queries": 300,
+      "pretrained": "weights/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth",
+      "use_dfca": false,
+      "use_fref": false,
+      "use_sse": false
+    },
+    "seed": 0,
+    "train": {
+      "amp": false,
+      "backbone_lr_multiplier": 0.1,
+      "batch_size": 2,
+      "clip_grad_norm": 0.1,
+      "ema": {
+        "decay": 0.9999,
+        "enabled": true,
+        "warmups": 2000
+      },
+      "epochs": 20,
+      "lr": 0.00025,
+      "optimizer_groups": "rtdetr",
+      "output_dir": "outputs/rgbtdroneperson_cnn_mofe_zero_seed0",
+      "resize_sizes": [
+        [
+          448,
+          576
+        ],
+        [
+          512,
+          640
+        ],
+        [
+          576,
+          704
+        ]
+      ],
+      "warmup_factor": 0.001,
+      "warmup_steps": 2000,
+      "weight_decay": 0.0001,
+      "workers": 4
+    }
+  },
+  "all_A_common_initial_tensors_equal": true,
+  "common_tensor_count": 1401,
+  "CPU_rng_equal": true,
+  "original_spatial_source_preserved": true,
+  "source_sha256": {
+    "dyfclt/__init__.py": "69d471592bb74706a8fc6fcc5b8c70dc8496462430a1bf2a4a258e98e503b091",
+    "dyfclt/data.py": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "dyfclt/detection_gate.py": "fd3e3df740074503a68e0d50b12af8257788b6cbf93cf1f34a8bafbba0b8b44d",
+    "dyfclt/dual_encoder.py": "e0f47756f351af74bcc4c28adefb4f5857dadce1499513ed065b36de3ed7ad0a",
+    "dyfclt/evaluation.py": "cc3a8d8c3126eafbd278ebe947b281ac21156a5140f20bc6a8d21d008e158061",
+    "dyfclt/frequency.py": "c8565acad3fbc14937cfbd047a5a4144b86fde161a4b6453ed2e3661e2665150",
+    "dyfclt/frequency_training.py": "6ad258c767a1b5125b9883b7c2524e5f33e0dd63cc2b8b3e058f7239d55ccf49",
+    "dyfclt/frequency_utility.py": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "dyfclt/losses.py": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "dyfclt/model.py": "2d5afe1588cedefb8d43c484eba41f149cca0dbe2e02a3e8f3983ca50633c30e",
+    "dyfclt/object_sweep.py": "9f07426e7871ab726c88d526a9fe3f0570716645044d23d4d686408c9f6388d0",
+    "dyfclt/relation_mofe.py": "f9d8da171e1917d5fbae3bb6b5c91957f6eed81cd8c9823c0c7ce5ee942a73c5",
+    "dyfclt/residual_mamba_mofe.py": "dc871f2edc599e9fcc7bba09f74c83de015c92aaa5aaceeb2d789ae63c97adf0",
+    "dyfclt/residual_mofe.py": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "dyfclt/runtime.py": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "dyfclt/s3am_mofe.py": "e5210d05f3ebacdb474782c08dbee5226496660e1a3259f3177633dfbd27a4f8",
+    "dyfclt/spatial_mofe.py": "e1fe761d4c410d9373a4711946d1c89ade8863d97a35a4fc9edf8f13a49ecad4",
+    "dyfclt/spectral_analysis.py": "70ca7e5bfe1827d9e6dc3abd4cf1e8e15053b819bfd9a8fe69e846d14bd7cec2",
+    "dyfclt/ss2d_context.py": "4458942aa954c7ef6a44ffcbca629b5ae2f6a09515be24727ce8e872c526f75d",
+    "dyfclt/sse.py": "0405e857469844f8b12783710eed3231bd876c3ddd50730496c6fe9aeb9ea446",
+    "dyfclt/training.py": "7c313e85986ab7b7253657586c52a408f2b593c8d0c9c7b5a3e3e091effdb99e",
+    "dyfclt/utility_diagnostics.py": "14c6c25b50d25477c35e6e0e97d5a0cf06a02d943c8f01210cbe7f6bfb3dff27",
+    "dyfclt/utility_probe.py": "3779180684bb3a242fc0b9b54e091e0f08d0b0b341c017d65dddcbe8df74d807",
+    "dyfclt/vendor/__init__.py": "45deb0a8089ccccbcdc68086b69deb96e217208404e09cd5bb23b6a050ece960",
+    "dyfclt/vendor/box_ops.py": "a670ce02bce95c3b2304a6708c7c609f281237a7bbe8d63bcef56393a80baa4c",
+    "dyfclt/vendor/common.py": "29ca34ee34f53ccab66e4a1d985df08ede3df9a686d4f84f861010b8f7513d44",
+    "dyfclt/vendor/denoising.py": "2254d6b781879f54684e5726ada5e9c99414873398cf0a42c2e11d691bece595",
+    "dyfclt/vendor/distributed.py": "98859a5fbd06886478de1954fc7aed3ed9c61e38186035e40d4c9b32bb39cc96",
+    "dyfclt/vendor/hybrid_encoder.py": "3701dcc31fdd093bfa87ad3c42639f12e22fbb7a8dbdf5126be3d2af332e6567",
+    "dyfclt/vendor/matcher.py": "a4de1b8ccdd427c89779df683fc8255daa5ef07adb9b4985bea8b2f34983afbe",
+    "dyfclt/vendor/presnet.py": "b0e2edefc4c92ddd6c2d94aff1f7d765b20120126cca5bc3ba89d033703bb6e2",
+    "dyfclt/vendor/rtdetr_criterion.py": "c68309955f7c1a1dd121a429bc8f74f38d30365328351410cf775c065bb39fd9",
+    "dyfclt/vendor/rtdetr_decoder.py": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "dyfclt/vendor/tiny_cocoeval.py": "1f18a2f9e51544d220c03792e7e4720169f38af6a66cebf34e58d1bff14f1981",
+    "dyfclt/vendor/utils.py": "dc7f50339c308651b24a236718789e1575e7fc6a4c9f2915b15470bfc393c1ad",
+    "tools/analyze_frequency.py": "4dffba21cac2063322c3866614ff2c1fa4951c33e8987ee82085d8fce24072e2",
+    "tools/cnn_mofe_zero_preflight.py": "52e217368ce0e074ef31d784482b34b326d2342f3b92de109c6967f12d1c36ef",
+    "tools/detection_gate_preflight.py": "833b9d614d6705d5bf70b548cead311afc42630921e7303637913af23f99cca8",
+    "tools/evaluate.py": "6ed529b0c547d6c912014353e0b20c9633809cbdd166fe840c0ebde12d726e26",
+    "tools/frequency_preflight.py": "e7690bfefcb7c61ab7554ff8f3ac993b8fcd7547ce9b3942ef04597c8ea9b742",
+    "tools/gpu1_guard.sh": "18f539df2543f175e088f3a5e4bf588b80a5e0ba519db31a776b8e307f8b0423",
+    "tools/gpu_guard.sh": "faa33cc075e42718ba0147969bd7c65baa1f56cffffb26d9c75ce0a5c0766a38",
+    "tools/mamba_residual_preflight.py": "64e4fe2a2f48251587680203d806d6ece03423ceedbedca31567747ec8f1631a",
+    "tools/pre_pyramid_preflight.py": "cf2872d51784bb6d293da3f23bca51e62dc12ce9c45a99c3ca6cb2a411d0c2b9",
+    "tools/pre_pyramid_protocol.py": "ec747b7280b5c17e24dc2aaf207a7704f7aa7220cd81d14ac42bc8f9f22fa9b4",
+    "tools/pre_pyramid_queue.py": "642d2603b2dd8a532a5d7813f31171e7816620bd7f1ceb537eabb2af0ac7d1e3",
+    "tools/predict.py": "32e1b314729337e12680cc61e4c0201e2d8daae3aa5897af8600ed3f5b8f13c8",
+    "tools/prepare_mamba_residual_launch.py": "2222ae0916da4b6d9e3fdd1c88ef9c45f8df954e11448ef66b9a0dcaf453736b",
+    "tools/prepare_mofe_launch.py": "cd0cc92efd3e551f81d193f3db4e2029cfcbb39f7c30d407b69293272ad4c6e4",
+    "tools/prepare_pre_pyramid_launch.py": "e591a41026def272b1aeb27288c32b1aae4dc5576f08f8c8506d22a44ab8d0ea",
+    "tools/prepare_residual_mofe_launch.py": "e37b3e39ed06e08a2d03fc4dcd14f2a5b11b803d3d3171171c7bdc13c12df405",
+    "tools/prepare_spatial_mofe_launch.py": "5654b83a117ccd710c33da27984c19e634e0fa651bc75d2f951ec0cf39e25bf6",
+    "tools/relation_learned_residual_preflight.py": "601f7cef8cac44e8491d152eb0e3d14e28df90b0aedb51f849a6e249d281ac83",
+    "tools/relation_mofe_preflight.py": "614df91269b2e9458ea9e7db59fb770fb39329bc747d4719859464cce4ba6c3c",
+    "tools/residual_mofe_preflight.py": "48995f5c849f475619ce27296fbefff82b928541788889571284ccf134c95885",
+    "tools/smoke_test.py": "93e3b87bf4b1ded6a18730744eb9bcd57f4a7e1b08e032a1cab30cb5019a5922",
+    "tools/spatial_mofe_preflight.py": "bb5a0dae297c431d771b093afd6de57897377b66b9e9e4444792d0efa4b44179",
+    "tools/spatial_mofe_protocol.py": "fb4aa6c7da6d62253e5cb32756fbb7dcc9b728084bc94a2259d595f2993974cc",
+    "tools/train.py": "72ec30a43ba79f4b48443e82087dcc3beb6f9f849dbcf3f637f8a4f267d68d22",
+    "tools/train_detection_gate.py": "db2bf5e93b154569dfd43434ccc4f4097ccbd0ed6b2b9fe8ed615619a957af38",
+    "tools/train_detection_gate_fresh_gpu1.sh": "4a891e1ba6cfb6b1119d77574cc0b2806b0a694e7b30a9556692ab700a4b9695",
+    "tools/train_dual_rtdetr_gpu1_seed0.sh": "0f0024fd530c01db5d4f15488b9f005a0803eef55dfe15f6db00c2f6c758d9d9",
+    "tools/train_frequency_utility.py": "48d0166c7afa88398cda3940895772859a917d9140ef4744346f76ed7909fa94",
+    "tools/train_frequency_utility_gpu1.sh": "4ae6254979201e4332fbaf95b896c12db5579f451673aaf0c9b640af89596e49",
+    "tools/train_gpu1_seed0.sh": "ad5fd2ac6cbd5d970920db42eec0316fb8a361228c218973b475a1647f970993",
+    "tools/train_mamba_residual_gpu0.sh": "3c89115c4af3a08d7548e7aec09c426f5449c286e82a4722258e4f89a32987da",
+    "tools/train_mofe_gpu1.sh": "2d778ff9cee9b2fc361d8c8c30175120b35f6842c147e8df7652a7c2ff615d2c",
+    "tools/train_pre_pyramid_gpu.sh": "c29c260d4df67af3df40873b280a55611ccd46e2ec6777cd4e30f82b8824791a",
+    "tools/train_residual_mofe_gpu1.sh": "b40742b18e7a6d7433e069169a39675c58d25afcefea43a87d577376a4b524a7",
+    "tools/train_spatial_mofe_gpu1.sh": "2182902aa8bec2307c6d7ea0d6ea54e9fd831d56dce4563f161bda3554b30bd4",
+    "configs/rgbtdroneperson.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_4class_initial.yaml": "3defc8fc7c923ecbbfaaeb0b52c5989c2e5c024d19671c708df90caa27c10daa",
+    "configs/rgbtdroneperson_A_continuation.yaml": "0a2570f4b4dd1e1efcd0a01eb0ac8def2f01b4ed976ca223b251bfaab674861d",
+    "configs/rgbtdroneperson_B_pre_seed0.yaml": "20e56761fd2827737285156f19f86aa62802e00f3eeb7191203d182a4609320a",
+    "configs/rgbtdroneperson_E_pre_seed0.yaml": "aef77e25629790de93cf864d9fd90fd0fa556b04143597dea9d11146f9ddb58a",
+    "configs/rgbtdroneperson_Ev2_seed0.yaml": "6e7004ae451ed3464db7c2e6f9db7079c4bd0b8e9256331693860c663ba312c4",
+    "configs/rgbtdroneperson_cnn_mofe_zero_seed0.yaml": "fe50a6406a30000783745a674de2e856eb9561b24bb3d432f7ea7d1de2d74712",
+    "configs/rgbtdroneperson_detection_gate_fresh.yaml": "9aeed1edd1387572768d5da708a639fd91b2fe942445f21572c153b6641847f1",
+    "configs/rgbtdroneperson_dual_rtdetr.yaml": "70ce24cd12a41268f0fed0c868b9a41f3061005df671fc896845fef91522e2b7",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca.yaml": "588d62b18bd8f7b62be16b4ac3f66b138af01c9002038153e7b1b6204c34aafd",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca_ibs.yaml": "a9594acf0d9a5374f9cec1eaee406e53766ff230defd80f9652568b135279a8e",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_sse.yaml": "ed39a500bae7837d72f4541fedf2ccb066595631bd5e3607d4e3a12251a6050e",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca.yaml": "2d4864d22289704a56c34bc3145c27af6e8020f9bc3dd7754915e69d23dd2dde",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca_ibs.yaml": "d1486187015578e1906c6def0756a08e0bef1b7f5aa5ea8441be01ba8be04423",
+    "configs/rgbtdroneperson_dual_rtdetr_sse.yaml": "e25fba2727a6ea8828a53d8c157caea86eafce541b588d37d6241df8140aa60f",
+    "configs/rgbtdroneperson_dual_rtdetr_stable_dfca.yaml": "a7c2041a1754ce81bfdaa01e0b3f9ff06b65719e1fdf7cf2b851c0401bcc82a0",
+    "configs/rgbtdroneperson_dyfclt_compact.yaml": "55bb3c71b13a7846147863912750dff9d5471ce92dd09f90b799c6cb4cae6812",
+    "configs/rgbtdroneperson_dyfclt_group64_raw.yaml": "f616ce559102ac0211809fab6fd8a13db9d877d80a172c83f08d9ec3de66f338",
+    "configs/rgbtdroneperson_dyfclt_rtdetr_recipe.yaml": "4a272d5d3624461bbed0e0a742846f44193cae70f4260d615be5a5a1d4c81663",
+    "configs/rgbtdroneperson_dyfclt_stable_dfca.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_dyfclt_supplement.yaml": "43da3b17adbaba3a96f2a5a783d8bf80dbcf4e88b7635346af1812b5f791a78f",
+    "configs/rgbtdroneperson_frequency_utility.yaml": "80deb5853a1214e9060eda7c5bc450d4b781d26ee1ab0627a8b2817de50b3390",
+    "configs/rgbtdroneperson_legacy_topdown.yaml": "95ac623c4ce4fdbe5eeadb7f52ec235d04b9446b5722432ca3a5e3a7c4111b16",
+    "configs/rgbtdroneperson_relation_direct_seed0.yaml": "18c526c4bef483ff037e240bc81c41e44b18fe8ebbfcefbb4e3895cc8c15bc9f",
+    "configs/rgbtdroneperson_relation_learned_residual_seed0.yaml": "ae15b9ac17fb944fd7ec8f6cddd3476b5d847654dc22a62fe1eb95e613a1bda0",
+    "configs/rgbtdroneperson_relation_residual_seed0.yaml": "73039246e0300e410b69d7d034004ebe855389aabfb4ed16545d62dbfbff029b",
+    "configs/rgbtdroneperson_residual_mofe.yaml": "549adbca665a8bf3dc8f74f139823ca55a0b3527c78790eb80090e1e2d1dc3d2",
+    "configs/rgbtdroneperson_s3am_mofe.yaml": "6b4bbdf834a8959490c1faa57992d979154682ea1c1775ab933a072def9f52de",
+    "configs/rgbtdroneperson_spatial_mofe_seed0.yaml": "a6f607e4c8e3a7ab0bd5010dcbf30bf412096635d825cba48c0ba81aced83130"
+  },
+  "all_module_gradients_finite": true,
+  "first_step_gamma_only_gradients": true,
+  "subsequent_all_module_gradients_nonzero": true,
+  "initial_predictions_equal_baseline": true,
+  "gamma_updated_on_first_step": true,
+  "all_module_parameters_updated": false,
+  "optimizer_includes_all_module_parameters": true,
+  "EMA_eval_finite_repeatable": true,
+  "mode": "cnn_spatial_mofe_zero_init",
+  "added_attention": false,
+  "residual_multiplier": 1.0,
+  "initial_strengths": [
+    0.0,
+    0.0
+  ],
+  "final_strengths": [
+    2.614235938835918e-07,
+    4.775013167090947e-07
+  ],
+  "module_parameter_tensors": 36,
+  "changed": {
+    "gamma_rgb": true,
+    "gamma_thermal": true,
+    "rgb_from_thermal.project.weight": true,
+    "rgb_from_thermal.experts.0.0.weight": true,
+    "rgb_from_thermal.experts.0.2.weight": false,
+    "rgb_from_thermal.experts.0.4.weight": true,
+    "rgb_from_thermal.experts.1.0.weight": true,
+    "rgb_from_thermal.experts.1.2.weight": false,
+    "rgb_from_thermal.experts.1.4.weight": true,
+    "rgb_from_thermal.experts.2.0.weight": true,
+    "rgb_from_thermal.experts.2.2.weight": false,
+    "rgb_from_thermal.experts.2.4.weight": true,
+    "rgb_from_thermal.experts.3.0.weight": true,
+    "rgb_from_thermal.experts.3.2.weight": false,
+    "rgb_from_thermal.experts.3.4.weight": true,
+    "rgb_from_thermal.router.0.weight": true,
+    "rgb_from_thermal.router.0.bias": false,
+    "rgb_from_thermal.router.3.weight": true,
+    "rgb_from_thermal.router.3.bias": true,
+    "thermal_from_rgb.project.weight": true,
+    "thermal_from_rgb.experts.0.0.weight": true,
+    "thermal_from_rgb.experts.0.2.weight": true,
+    "thermal_from_rgb.experts.0.4.weight": true,
+    "thermal_from_rgb.experts.1.0.weight": true,
+    "thermal_from_rgb.experts.1.2.weight": false,
+    "thermal_from_rgb.experts.1.4.weight": true,
+    "thermal_from_rgb.experts.2.0.weight": true,
+    "thermal_from_rgb.experts.2.2.weight": true,
+    "thermal_from_rgb.experts.2.4.weight": true,
+    "thermal_from_rgb.experts.3.0.weight": true,
+    "thermal_from_rgb.experts.3.2.weight": false,
+    "thermal_from_rgb.experts.3.4.weight": true,
+    "thermal_from_rgb.router.0.weight": true,
+    "thermal_from_rgb.router.0.bias": false,
+    "thermal_from_rgb.router.3.weight": true,
+    "thermal_from_rgb.router.3.bias": true
+  },
+  "steps": [
+    {
+      "step": 1,
+      "image_size": [
+        448,
+        576
+      ],
+      "loss": 31.900922775268555,
+      "grad_norm": 65.62892150878906,
+      "strengths_after_update": [
+        -2.493768818112585e-07,
+        2.495685009762383e-07
+      ],
+      "seconds": 0.608251204714179,
+      "gradients": {
+        "gamma_rgb": {
+          "finite": true,
+          "abs_sum": 0.002626642119139433
+        },
+        "gamma_thermal": {
+          "finite": true,
+          "abs_sum": 0.0037959751207381487
+        },
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 0.0
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 0.0
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.25230857729911804,
+            0.24807269871234894,
+            0.2504509687423706,
+            0.2491677850484848
+          ],
+          "weight_spatial_std_mean": [
+            0.006024329923093319,
+            0.0073725576512515545,
+            0.006598248146474361,
+            0.007421107962727547
+          ],
+          "routing_entropy_mean": 1.3858932256698608,
+          "residual_scale_mean": 0.0,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 0.0,
+          "candidate_rms_mean": [
+            0.13642755150794983,
+            0.07617974281311035,
+            0.09174180775880814,
+            0.060545966029167175
+          ],
+          "relative_update_mean": 0.0,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24992188811302185,
+            0.24971240758895874,
+            0.2509051561355591,
+            0.24946057796478271
+          ],
+          "weight_spatial_std_mean": [
+            0.00671632494777441,
+            0.007129631005227566,
+            0.007081319112330675,
+            0.007269318215548992
+          ],
+          "routing_entropy_mean": 1.385892391204834,
+          "residual_scale_mean": 0.0,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 0.0,
+          "candidate_rms_mean": [
+            0.1200951635837555,
+            0.08817073702812195,
+            0.07386499643325806,
+            0.06301511079072952
+          ],
+          "relative_update_mean": 0.0,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 2,
+      "image_size": [
+        576,
+        704
+      ],
+      "loss": 31.85979461669922,
+      "grad_norm": 46.357452392578125,
+      "strengths_after_update": [
+        -8.099662807126151e-08,
+        3.565832855656481e-07
+      ],
+      "seconds": 0.5175632666796446,
+      "gradients": {
+        "gamma_rgb": {
+          "finite": true,
+          "abs_sum": 0.004753738641738892
+        },
+        "gamma_thermal": {
+          "finite": true,
+          "abs_sum": 0.0012725524138659239
+        },
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 1.2584941941895522e-06
+        },
+        "rgb_from_thermal.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 8.367338182324602e-07
+        },
+        "rgb_from_thermal.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 5.5090669803803394e-08
+        },
+        "rgb_from_thermal.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 6.624832167290151e-07
+        },
+        "rgb_from_thermal.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 9.918837804434588e-07
+        },
+        "rgb_from_thermal.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 3.289788708116248e-08
+        },
+        "rgb_from_thermal.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 4.465559584332368e-07
+        },
+        "rgb_from_thermal.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 1.1622536248978577e-06
+        },
+        "rgb_from_thermal.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 4.258802022150121e-08
+        },
+        "rgb_from_thermal.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 5.371909423956822e-07
+        },
+        "rgb_from_thermal.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 1.3103152696203324e-06
+        },
+        "rgb_from_thermal.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 2.9395149425681666e-08
+        },
+        "rgb_from_thermal.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 3.8383893752325093e-07
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 4.02931760845604e-07
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 1.6699785998497418e-10
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 5.383965984151473e-08
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 1.2865483678403677e-10
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 9.847918818195467e-07
+        },
+        "thermal_from_rgb.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 6.225775450729998e-07
+        },
+        "thermal_from_rgb.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 4.273373832575089e-08
+        },
+        "thermal_from_rgb.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 4.7443336370633915e-07
+        },
+        "thermal_from_rgb.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 9.37575919124356e-07
+        },
+        "thermal_from_rgb.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 3.372811363533401e-08
+        },
+        "thermal_from_rgb.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 4.266009057118936e-07
+        },
+        "thermal_from_rgb.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 8.493431096212589e-07
+        },
+        "thermal_from_rgb.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 3.0323299426981976e-08
+        },
+        "thermal_from_rgb.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 3.7255620100040687e-07
+        },
+        "thermal_from_rgb.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 1.101128987102129e-06
+        },
+        "thermal_from_rgb.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 2.5131896563834744e-08
+        },
+        "thermal_from_rgb.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 3.3008461741701467e-07
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 3.1425446422872483e-07
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 1.6962632687356205e-10
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 3.7798994156901244e-08
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 6.311808298242738e-10
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.25206708908081055,
+            0.2482522428035736,
+            0.25030919909477234,
+            0.24937143921852112
+          ],
+          "weight_spatial_std_mean": [
+            0.0059520173817873,
+            0.007760592270642519,
+            0.006165920756757259,
+            0.007337550632655621
+          ],
+          "routing_entropy_mean": 1.3858968019485474,
+          "residual_scale_mean": -2.493768818112585e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -2.493768818112585e-07,
+          "candidate_rms_mean": [
+            0.14299650490283966,
+            0.0782013013958931,
+            0.09616636484861374,
+            0.06023059040307999
+          ],
+          "relative_update_mean": 9.54201340164218e-09,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24998566508293152,
+            0.2496737241744995,
+            0.2508767247200012,
+            0.24946382641792297
+          ],
+          "weight_spatial_std_mean": [
+            0.006988520734012127,
+            0.0065186163410544395,
+            0.00698442105203867,
+            0.00771827157586813
+          ],
+          "routing_entropy_mean": 1.3858859539031982,
+          "residual_scale_mean": 2.495685009762383e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 2.495685009762383e-07,
+          "candidate_rms_mean": [
+            0.13121366500854492,
+            0.09508867561817169,
+            0.07643590867519379,
+            0.06283308565616608
+          ],
+          "relative_update_mean": 9.185916916010228e-09,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 3,
+      "image_size": [
+        512,
+        640
+      ],
+      "loss": 33.67727279663086,
+      "grad_norm": 55.8043098449707,
+      "strengths_after_update": [
+        2.614235938835918e-07,
+        4.775013167090947e-07
+      ],
+      "seconds": 0.4724419843405485,
+      "gradients": {
+        "gamma_rgb": {
+          "finite": true,
+          "abs_sum": 0.005536173935979605
+        },
+        "gamma_thermal": {
+          "finite": true,
+          "abs_sum": 0.00012066838098689914
+        },
+        "rgb_from_thermal.project.weight": {
+          "finite": true,
+          "abs_sum": 3.9913260252433247e-07
+        },
+        "rgb_from_thermal.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 2.723008094562829e-07
+        },
+        "rgb_from_thermal.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 1.798130355723515e-08
+        },
+        "rgb_from_thermal.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 2.1978024733471102e-07
+        },
+        "rgb_from_thermal.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 3.0611235501964984e-07
+        },
+        "rgb_from_thermal.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 1.1056709325885095e-08
+        },
+        "rgb_from_thermal.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 1.4094902667238784e-07
+        },
+        "rgb_from_thermal.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 3.558144783255557e-07
+        },
+        "rgb_from_thermal.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 1.2495666723566501e-08
+        },
+        "rgb_from_thermal.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 1.6460256802020012e-07
+        },
+        "rgb_from_thermal.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 4.10462121180899e-07
+        },
+        "rgb_from_thermal.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 9.064798689450981e-09
+        },
+        "rgb_from_thermal.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 1.2135663496337656e-07
+        },
+        "rgb_from_thermal.router.0.weight": {
+          "finite": true,
+          "abs_sum": 9.652580246211073e-08
+        },
+        "rgb_from_thermal.router.0.bias": {
+          "finite": true,
+          "abs_sum": 8.326379863365929e-11
+        },
+        "rgb_from_thermal.router.3.weight": {
+          "finite": true,
+          "abs_sum": 1.500735891113436e-08
+        },
+        "rgb_from_thermal.router.3.bias": {
+          "finite": true,
+          "abs_sum": 5.983418760457937e-10
+        },
+        "thermal_from_rgb.project.weight": {
+          "finite": true,
+          "abs_sum": 1.5945422546792543e-06
+        },
+        "thermal_from_rgb.experts.0.0.weight": {
+          "finite": true,
+          "abs_sum": 1.0441789299875381e-06
+        },
+        "thermal_from_rgb.experts.0.2.weight": {
+          "finite": true,
+          "abs_sum": 7.741590479781735e-08
+        },
+        "thermal_from_rgb.experts.0.4.weight": {
+          "finite": true,
+          "abs_sum": 8.453092732452205e-07
+        },
+        "thermal_from_rgb.experts.1.0.weight": {
+          "finite": true,
+          "abs_sum": 1.4906470369169256e-06
+        },
+        "thermal_from_rgb.experts.1.2.weight": {
+          "finite": true,
+          "abs_sum": 5.4756036149683496e-08
+        },
+        "thermal_from_rgb.experts.1.4.weight": {
+          "finite": true,
+          "abs_sum": 6.831294285802869e-07
+        },
+        "thermal_from_rgb.experts.2.0.weight": {
+          "finite": true,
+          "abs_sum": 1.3570388546213508e-06
+        },
+        "thermal_from_rgb.experts.2.2.weight": {
+          "finite": true,
+          "abs_sum": 4.4390105813363334e-08
+        },
+        "thermal_from_rgb.experts.2.4.weight": {
+          "finite": true,
+          "abs_sum": 5.798551683255937e-07
+        },
+        "thermal_from_rgb.experts.3.0.weight": {
+          "finite": true,
+          "abs_sum": 1.7246777588297846e-06
+        },
+        "thermal_from_rgb.experts.3.2.weight": {
+          "finite": true,
+          "abs_sum": 4.0359758202157536e-08
+        },
+        "thermal_from_rgb.experts.3.4.weight": {
+          "finite": true,
+          "abs_sum": 5.246965315564012e-07
+        },
+        "thermal_from_rgb.router.0.weight": {
+          "finite": true,
+          "abs_sum": 4.3019116446885164e-07
+        },
+        "thermal_from_rgb.router.0.bias": {
+          "finite": true,
+          "abs_sum": 3.326395270342175e-10
+        },
+        "thermal_from_rgb.router.3.weight": {
+          "finite": true,
+          "abs_sum": 5.471974517945455e-08
+        },
+        "thermal_from_rgb.router.3.bias": {
+          "finite": true,
+          "abs_sum": 1.5661683061551912e-09
+        }
+      },
+      "gate_statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.25223225355148315,
+            0.24799135327339172,
+            0.2504248321056366,
+            0.24935153126716614
+          ],
+          "weight_spatial_std_mean": [
+            0.005966785829514265,
+            0.007560525555163622,
+            0.006184162572026253,
+            0.0073713562451303005
+          ],
+          "routing_entropy_mean": 1.385892629623413,
+          "residual_scale_mean": -8.099662807126151e-08,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -8.099662807126151e-08,
+          "candidate_rms_mean": [
+            0.1350739300251007,
+            0.07717078924179077,
+            0.09153077006340027,
+            0.06036601960659027
+          ],
+          "relative_update_mean": 1.7789691941771935e-09,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.24996088445186615,
+            0.24992060661315918,
+            0.2507939338684082,
+            0.24932458996772766
+          ],
+          "weight_spatial_std_mean": [
+            0.007037716452032328,
+            0.007130703888833523,
+            0.007283044513314962,
+            0.00759496446698904
+          ],
+          "routing_entropy_mean": 1.3858673572540283,
+          "residual_scale_mean": 3.565832855656481e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 3.565832855656481e-07,
+          "candidate_rms_mean": [
+            0.1250048279762268,
+            0.09028485417366028,
+            0.07364273071289062,
+            0.06314264237880707
+          ],
+          "relative_update_mean": 1.3828717726482864e-08,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    }
+  ],
+  "parameters": 85286203,
+  "module_parameters": 431242,
+  "physical_gpu": 1,
+  "gpu_uuid": "GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2",
+  "pretrained_sha256": "641dc59835d5228e6013ac45acb633592ec825144fb3d78055bc07699f404353",
+  "annotation_sha256": {
+    "train": "6915b8f260b77364116e9dfb7b277f0540df610c5cc674bed41a7aab90b36dc1",
+    "val": "5aebf4217ba5ca24569fe672b03956723ad47b24a38bcf96a2cdb42e5c0b2c28"
+  },
+  "trained_A_B_checkpoint_loaded": false,
+  "production_training_launched": false,
+  "AP_measured": false
+}

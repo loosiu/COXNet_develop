@@ -1,0 +1,6 @@
+{
+  "physical_gpu": 1,
+  "uuid": "GPU-c1faf7b9-2a34-010b-9739-4712a6f089a2",
+  "process_device": "cuda:0",
+  "mapping_verified": true
+}

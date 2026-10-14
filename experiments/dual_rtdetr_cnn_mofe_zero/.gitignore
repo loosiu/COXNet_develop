@@ -1,0 +1,10 @@
+data/
+weights/
+outputs/
+checkpoints/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.pth
+*.pt
+*.ckpt
