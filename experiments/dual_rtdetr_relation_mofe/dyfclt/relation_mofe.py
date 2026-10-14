@@ -183,6 +183,11 @@ class BidirectionalRelationMoFE(nn.Module):
                 values['relative_update'].append(rms[2]/rms[0].clamp_min(1e-12))
                 values['valid_fraction'].append(mask.mean((1, 2, 3)))
             diagnostics = {key: torch.stack(value, 1) for key, value in values.items()}
+            if self.output_mode == 'residual':
+                gamma = torch.stack((self.gamma_rgb, self.gamma_thermal)).detach().unsqueeze(0).expand(rgb.shape[0], -1)
+                diagnostics.update(residual_scale=gamma,
+                    residual_multiplier=torch.full_like(gamma, self.residual_multiplier),
+                    effective_residual_scale=self.residual_multiplier * gamma)
         return *outputs, dict(routing_weights=weights,
             routing_logits=torch.stack((cache['rgb_from_thermal']['s'], cache['thermal_from_rgb']['s']), 1),
             diagnostics=diagnostics, output_mode=self.output_mode)

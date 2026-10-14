@@ -1,0 +1,4 @@
+{"step": 1, "image_size": [448, 576], "loss": 31.761791229248047, "grad_norm": 65.25562286376953, "seconds": 1.7474383916705847, "strengths_after_update": [0.09999975562095642, 0.09999974817037582]}
+{"step": 2, "image_size": [576, 704], "loss": 31.88182830810547, "grad_norm": 46.31846618652344, "seconds": 0.5273921890184283, "strengths_after_update": [0.09999996423721313, 0.09999938309192657]}
+{"step": 3, "image_size": [512, 640], "loss": 33.602142333984375, "grad_norm": 56.85463333129883, "seconds": 0.4490370722487569, "strengths_after_update": [0.09999971091747284, 0.09999889880418777]}
+{"verified": true, "updated_tensors": 100, "parameters": 85789499, "module_parameters": 934538, "production_training_launched": false}
