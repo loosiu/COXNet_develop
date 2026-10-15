@@ -1,0 +1,49 @@
+test_detection_gradients_unlock_experts_after_gamma_update_and_EMA_tracks_them (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_frequency_module_has_CNN_experts_and_spatial_weights_without_QKV (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_recipe_is_zero_init_CNN_spatial_residual_with_the_same_A_training (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_zero_init_preserves_A_tensors_RNG_and_initial_predictions (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_E_initial_output_exact_B (test_pre_pyramid.PrePyramidTests) ... There was a problem when trying to write in your cache folder (/home/viplab/.cache/huggingface/hub). You should set the environment variable TRANSFORMERS_CACHE to a writable directory.
+ok
+test_gamma_zero_reproduces_A_all_outputs_and_RNG (test_pre_pyramid.PrePyramidTests) ... ok
+test_only_P3_input_changes_but_all_pyramid_levels_respond (test_pre_pyramid.PrePyramidTests) ... ok
+test_reject_invalid_location (test_pre_pyramid.PrePyramidTests) ... ok
+test_replay_matches_normal_after_pyramid (test_pre_pyramid.PrePyramidTests) ... ok
+test_split_encoder_exact_legacy_forward (test_pre_pyramid.PrePyramidTests) ... ok
+test_valid_mask_applied_at_projected_P3_once (test_pre_pyramid.PrePyramidTests) ... ok
+test_banks_read_original_pair_and_masks_block_injection (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_config_only_changes_expert_mode_and_output (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_gradients_open_after_gamma_and_final_gate_layers (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_initial_gate_is_one_but_expert_is_nonzero (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_learned_relation_gate_depends_on_donor_but_value_does_not (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_projection_router_and_rng_match_existing_bank (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_receiver_zero_forbids_direct_donor_values (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_two_values_shared_across_four_experts (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_only_idle_queue_can_be_retired (test_self_band_queue.SelfBandQueueTests) ... ok
+test_reservation_keeps_all_resource_locks (test_self_band_queue.SelfBandQueueTests) ... ok
+test_retirement_requires_completed_second_stage (test_self_band_queue.SelfBandQueueTests) ... ok
+test_started_third_stage_must_never_be_replaced (test_self_band_queue.SelfBandQueueTests) ... ok
+test_bad_multiplier_or_wrong_expert_axis_is_rejected (test_spatial_mofe.SpatialMoFETests) ... ok
+test_bank_parameters_and_rng_are_identical_to_B (test_spatial_mofe.SpatialMoFETests) ... ok
+test_both_directions_use_original_features_and_half_residual (test_spatial_mofe.SpatialMoFETests) ... ok
+test_detected_signal_trains_router_and_every_expert (test_spatial_mofe.SpatialMoFETests) ... ok
+test_invalid_regions_preserve_original_and_diagnostics_ignore_them (test_spatial_mofe.SpatialMoFETests) ... ok
+test_routing_is_local_and_probabilities_sum_at_each_position (test_spatial_mofe.SpatialMoFETests) ... ok
+test_A_initial_tensors_and_random_state_are_unchanged (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_EMA_is_finite_and_repeatable (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_detection_loss_updates_all_parameters_and_logs_spatial_variation (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_enhancement_is_before_FPN_and_changes_P4_P5 (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_fresh_seed0_recipe_matches_A_and_B_pre (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_replay_and_zero_gamma_bypass_are_exact (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_best_epoch_is_distinct_from_final_and_checkpoints_are_required (test_staged_queue.StagedQueueTests) ... ok
+test_checkpoint_completion_requires_finite_best_metric_and_correct_ema_metadata (test_staged_queue.StagedQueueTests) ... ok
+test_checkpoint_with_nonfinite_weights_is_not_complete (test_staged_queue.StagedQueueTests) ... ok
+test_cuda_mapping_probe_refuses_other_physical_gpu (test_staged_queue.StagedQueueTests) ... ok
+test_failed_training_never_releases_next_stage (test_staged_queue.StagedQueueTests) ... ok
+test_gpu_lock_conflict_releases_partial_acquisition (test_staged_queue.StagedQueueTests) ... ok
+test_no_exit_file_waits_without_launching_next_stage (test_staged_queue.StagedQueueTests) ... ok
+test_success_exit_without_twenty_validations_cannot_release_queue (test_staged_queue.StagedQueueTests) ... ok
+
+----------------------------------------------------------------------
+Ran 43 tests in 33.021s
+
+OK

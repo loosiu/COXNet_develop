@@ -1,0 +1,691 @@
+{
+  "checked_at_utc": "2026-10-15T05:28:17.248221+00:00",
+  "physical_gpu": 0,
+  "gpu_uuid": "GPU-13eb8897-9466-51a2-84eb-e2d28ce8deba",
+  "pid": 3884837,
+  "mapping_probe": {
+    "gpu_uuid": "GPU-13eb8897-9466-51a2-84eb-e2d28ce8deba",
+    "device": "cuda:0",
+    "mapping_verified": true
+  },
+  "shared_A_initialization_exact": true,
+  "shared_A_tensors": 1401,
+  "CPU_rng_equal": true,
+  "initial_prediction_equals_bypass": true,
+  "optimizer_covers_all_module_parameters": true,
+  "parameters": 85353275,
+  "module_parameters": 498314,
+  "module_parameter_tensors": 80,
+  "config": {
+    "data": {
+      "image_size": [
+        512,
+        640
+      ],
+      "train": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/train"
+      },
+      "val": {
+        "ann_file": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val_thermal.json",
+        "categories": [
+          "person",
+          "rider",
+          "crowd"
+        ],
+        "image_root": "/data/siwoo/COXNet-release/data/RGBTDronePerson/val"
+      }
+    },
+    "evaluation": {
+      "protocol": "rgbtdroneperson",
+      "selection_metric": "AP50"
+    },
+    "loss": {
+      "alpha": 0.3,
+      "beta": 0.7,
+      "gamma": 0.75,
+      "mask_weight": 0.0
+    },
+    "model": {
+      "architecture": "dual_rtdetr",
+      "frequency_utility": {
+        "dim": 64,
+        "expert_hidden": 64,
+        "gate_mode": "self_band_mofe",
+        "insertion_point": "post_encoder",
+        "residual_multiplier": 1.0,
+        "residual_scale": 0.0,
+        "router_hidden": 64
+      },
+      "hidden_dim": 256,
+      "num_classes": 3,
+      "num_decoder_layers": 6,
+      "num_denoising": 100,
+      "num_queries": 300,
+      "pretrained": "weights/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth",
+      "use_dfca": false,
+      "use_fref": false,
+      "use_sse": false
+    },
+    "seed": 0,
+    "train": {
+      "amp": false,
+      "backbone_lr_multiplier": 0.1,
+      "batch_size": 2,
+      "clip_grad_norm": 0.1,
+      "ema": {
+        "decay": 0.9999,
+        "enabled": true,
+        "warmups": 2000
+      },
+      "epochs": 20,
+      "lr": 0.00025,
+      "optimizer_groups": "rtdetr",
+      "output_dir": "outputs/rgbtdroneperson_self_band_mofe_zero_post_encoder_seed0",
+      "resize_sizes": [
+        [
+          448,
+          576
+        ],
+        [
+          512,
+          640
+        ],
+        [
+          576,
+          704
+        ]
+      ],
+      "warmup_factor": 0.001,
+      "warmup_steps": 2000,
+      "weight_decay": 0.0001,
+      "workers": 4
+    }
+  },
+  "source_sha256": {
+    "dyfclt/__init__.py": "69d471592bb74706a8fc6fcc5b8c70dc8496462430a1bf2a4a258e98e503b091",
+    "dyfclt/data.py": "cdb57700fbc1bc0c3c713a02dc9246d9d5b2c0bb36efdab26639fb94a940e39d",
+    "dyfclt/detection_gate.py": "fd3e3df740074503a68e0d50b12af8257788b6cbf93cf1f34a8bafbba0b8b44d",
+    "dyfclt/dual_encoder.py": "5bf7bb1030ff584b03bcb3e6132c1930ed8ab6cbde50fbad88d17957bdfb11d2",
+    "dyfclt/evaluation.py": "cc3a8d8c3126eafbd278ebe947b281ac21156a5140f20bc6a8d21d008e158061",
+    "dyfclt/frequency.py": "c8565acad3fbc14937cfbd047a5a4144b86fde161a4b6453ed2e3661e2665150",
+    "dyfclt/frequency_training.py": "6ad258c767a1b5125b9883b7c2524e5f33e0dd63cc2b8b3e058f7239d55ccf49",
+    "dyfclt/frequency_utility.py": "7ed33464ec6aa33e3af412e0e372ea71c3a27f6451f09748f61a8978f9df893e",
+    "dyfclt/losses.py": "f794271e5f05c81c8a33d303aacca906a54892404be882828722b9a959d0e426",
+    "dyfclt/model.py": "2d5afe1588cedefb8d43c484eba41f149cca0dbe2e02a3e8f3983ca50633c30e",
+    "dyfclt/object_sweep.py": "9f07426e7871ab726c88d526a9fe3f0570716645044d23d4d686408c9f6388d0",
+    "dyfclt/relation_mofe.py": "f9d8da171e1917d5fbae3bb6b5c91957f6eed81cd8c9823c0c7ce5ee942a73c5",
+    "dyfclt/residual_mamba_mofe.py": "dc871f2edc599e9fcc7bba09f74c83de015c92aaa5aaceeb2d789ae63c97adf0",
+    "dyfclt/residual_mofe.py": "5d9e1e92efb0245dec811bc26dc2411af53683ff2a41bf0f848e48be4b1fa2de",
+    "dyfclt/runtime.py": "a742c0f82eb2856e64076799b8347f9183543e299e2d61ae3c65137ace39ef5c",
+    "dyfclt/s3am_mofe.py": "e5210d05f3ebacdb474782c08dbee5226496660e1a3259f3177633dfbd27a4f8",
+    "dyfclt/self_band_mofe.py": "32381e7dbfdfd7eb2211a1323aa8877e8a925b6f661491f19a758c8d9f8ab3bc",
+    "dyfclt/spatial_mofe.py": "e1fe761d4c410d9373a4711946d1c89ade8863d97a35a4fc9edf8f13a49ecad4",
+    "dyfclt/spectral_analysis.py": "70ca7e5bfe1827d9e6dc3abd4cf1e8e15053b819bfd9a8fe69e846d14bd7cec2",
+    "dyfclt/ss2d_context.py": "4458942aa954c7ef6a44ffcbca629b5ae2f6a09515be24727ce8e872c526f75d",
+    "dyfclt/sse.py": "0405e857469844f8b12783710eed3231bd876c3ddd50730496c6fe9aeb9ea446",
+    "dyfclt/staged_mofe.py": "f4a6d99ecf588191914ee9e4eb38592d47945cb550bf110a73d8a67cc0baaef2",
+    "dyfclt/training.py": "7c313e85986ab7b7253657586c52a408f2b593c8d0c9c7b5a3e3e091effdb99e",
+    "dyfclt/utility_diagnostics.py": "14c6c25b50d25477c35e6e0e97d5a0cf06a02d943c8f01210cbe7f6bfb3dff27",
+    "dyfclt/utility_probe.py": "3779180684bb3a242fc0b9b54e091e0f08d0b0b341c017d65dddcbe8df74d807",
+    "dyfclt/vendor/__init__.py": "45deb0a8089ccccbcdc68086b69deb96e217208404e09cd5bb23b6a050ece960",
+    "dyfclt/vendor/box_ops.py": "a670ce02bce95c3b2304a6708c7c609f281237a7bbe8d63bcef56393a80baa4c",
+    "dyfclt/vendor/common.py": "29ca34ee34f53ccab66e4a1d985df08ede3df9a686d4f84f861010b8f7513d44",
+    "dyfclt/vendor/denoising.py": "2254d6b781879f54684e5726ada5e9c99414873398cf0a42c2e11d691bece595",
+    "dyfclt/vendor/distributed.py": "98859a5fbd06886478de1954fc7aed3ed9c61e38186035e40d4c9b32bb39cc96",
+    "dyfclt/vendor/hybrid_encoder.py": "3701dcc31fdd093bfa87ad3c42639f12e22fbb7a8dbdf5126be3d2af332e6567",
+    "dyfclt/vendor/matcher.py": "a4de1b8ccdd427c89779df683fc8255daa5ef07adb9b4985bea8b2f34983afbe",
+    "dyfclt/vendor/presnet.py": "b0e2edefc4c92ddd6c2d94aff1f7d765b20120126cca5bc3ba89d033703bb6e2",
+    "dyfclt/vendor/rtdetr_criterion.py": "c68309955f7c1a1dd121a429bc8f74f38d30365328351410cf775c065bb39fd9",
+    "dyfclt/vendor/rtdetr_decoder.py": "a4e1f1c84f282ec2460ad89ebed3ff89741ec18e005a6bbfe86d11c1a4f453f9",
+    "dyfclt/vendor/tiny_cocoeval.py": "1f18a2f9e51544d220c03792e7e4720169f38af6a66cebf34e58d1bff14f1981",
+    "dyfclt/vendor/utils.py": "dc7f50339c308651b24a236718789e1575e7fc6a4c9f2915b15470bfc393c1ad",
+    "tools/analyze_frequency.py": "4dffba21cac2063322c3866614ff2c1fa4951c33e8987ee82085d8fce24072e2",
+    "tools/cnn_mofe_zero_preflight.py": "52e217368ce0e074ef31d784482b34b326d2342f3b92de109c6967f12d1c36ef",
+    "tools/detection_gate_preflight.py": "833b9d614d6705d5bf70b548cead311afc42630921e7303637913af23f99cca8",
+    "tools/evaluate.py": "6ed529b0c547d6c912014353e0b20c9633809cbdd166fe840c0ebde12d726e26",
+    "tools/frequency_preflight.py": "e7690bfefcb7c61ab7554ff8f3ac993b8fcd7547ce9b3942ef04597c8ea9b742",
+    "tools/gpu1_guard.sh": "18f539df2543f175e088f3a5e4bf588b80a5e0ba519db31a776b8e307f8b0423",
+    "tools/gpu_guard.sh": "faa33cc075e42718ba0147969bd7c65baa1f56cffffb26d9c75ce0a5c0766a38",
+    "tools/mamba_residual_preflight.py": "64e4fe2a2f48251587680203d806d6ece03423ceedbedca31567747ec8f1631a",
+    "tools/pre_pyramid_preflight.py": "cf2872d51784bb6d293da3f23bca51e62dc12ce9c45a99c3ca6cb2a411d0c2b9",
+    "tools/pre_pyramid_protocol.py": "ec747b7280b5c17e24dc2aaf207a7704f7aa7220cd81d14ac42bc8f9f22fa9b4",
+    "tools/pre_pyramid_queue.py": "642d2603b2dd8a532a5d7813f31171e7816620bd7f1ceb537eabb2af0ac7d1e3",
+    "tools/predict.py": "32e1b314729337e12680cc61e4c0201e2d8daae3aa5897af8600ed3f5b8f13c8",
+    "tools/prepare_mamba_residual_launch.py": "2222ae0916da4b6d9e3fdd1c88ef9c45f8df954e11448ef66b9a0dcaf453736b",
+    "tools/prepare_mofe_launch.py": "cd0cc92efd3e551f81d193f3db4e2029cfcbb39f7c30d407b69293272ad4c6e4",
+    "tools/prepare_pre_pyramid_launch.py": "e591a41026def272b1aeb27288c32b1aae4dc5576f08f8c8506d22a44ab8d0ea",
+    "tools/prepare_residual_mofe_launch.py": "e37b3e39ed06e08a2d03fc4dcd14f2a5b11b803d3d3171171c7bdc13c12df405",
+    "tools/prepare_spatial_mofe_launch.py": "5654b83a117ccd710c33da27984c19e634e0fa651bc75d2f951ec0cf39e25bf6",
+    "tools/relation_learned_residual_preflight.py": "601f7cef8cac44e8491d152eb0e3d14e28df90b0aedb51f849a6e249d281ac83",
+    "tools/relation_mofe_preflight.py": "614df91269b2e9458ea9e7db59fb770fb39329bc747d4719859464cce4ba6c3c",
+    "tools/residual_mofe_preflight.py": "48995f5c849f475619ce27296fbefff82b928541788889571284ccf134c95885",
+    "tools/self_band_preflight.py": "fac003f680eeaba1d35bb3eee7e2192197f736fd7e6c2049dcfaccb7a80406e5",
+    "tools/self_band_queue.py": "382ae0f6921b3f37034d64506011d456a350b3b75263b60cde133b917a87e4d7",
+    "tools/smoke_test.py": "93e3b87bf4b1ded6a18730744eb9bcd57f4a7e1b08e032a1cab30cb5019a5922",
+    "tools/spatial_mofe_preflight.py": "bb5a0dae297c431d771b093afd6de57897377b66b9e9e4444792d0efa4b44179",
+    "tools/spatial_mofe_protocol.py": "fb4aa6c7da6d62253e5cb32756fbb7dcc9b728084bc94a2259d595f2993974cc",
+    "tools/staged_preflight.py": "996b00fa5b0936768d4d5fea5b23d8ed1cedc396e9a11185ab457106c0eb4d6a",
+    "tools/staged_queue.py": "5ff18b4357c5c81622c661e69917677cd58be5395af78aa7b1ae0d5b9c50694d",
+    "tools/train.py": "4846006a8a4baa06820b9aadd9e3d62d1607fee01f95d7f023cef966ecefe2bc",
+    "tools/train_detection_gate.py": "db2bf5e93b154569dfd43434ccc4f4097ccbd0ed6b2b9fe8ed615619a957af38",
+    "tools/train_detection_gate_fresh_gpu1.sh": "4a891e1ba6cfb6b1119d77574cc0b2806b0a694e7b30a9556692ab700a4b9695",
+    "tools/train_dual_rtdetr_gpu1_seed0.sh": "0f0024fd530c01db5d4f15488b9f005a0803eef55dfe15f6db00c2f6c758d9d9",
+    "tools/train_frequency_utility.py": "48d0166c7afa88398cda3940895772859a917d9140ef4744346f76ed7909fa94",
+    "tools/train_frequency_utility_gpu1.sh": "4ae6254979201e4332fbaf95b896c12db5579f451673aaf0c9b640af89596e49",
+    "tools/train_gpu1_seed0.sh": "ad5fd2ac6cbd5d970920db42eec0316fb8a361228c218973b475a1647f970993",
+    "tools/train_mamba_residual_gpu0.sh": "3c89115c4af3a08d7548e7aec09c426f5449c286e82a4722258e4f89a32987da",
+    "tools/train_mofe_gpu1.sh": "2d778ff9cee9b2fc361d8c8c30175120b35f6842c147e8df7652a7c2ff615d2c",
+    "tools/train_pre_pyramid_gpu.sh": "c29c260d4df67af3df40873b280a55611ccd46e2ec6777cd4e30f82b8824791a",
+    "tools/train_residual_mofe_gpu1.sh": "b40742b18e7a6d7433e069169a39675c58d25afcefea43a87d577376a4b524a7",
+    "tools/train_spatial_mofe_gpu1.sh": "2182902aa8bec2307c6d7ea0d6ea54e9fd831d56dce4563f161bda3554b30bd4",
+    "configs/rgbtdroneperson.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_4class_initial.yaml": "3defc8fc7c923ecbbfaaeb0b52c5989c2e5c024d19671c708df90caa27c10daa",
+    "configs/rgbtdroneperson_A_continuation.yaml": "0a2570f4b4dd1e1efcd0a01eb0ac8def2f01b4ed976ca223b251bfaab674861d",
+    "configs/rgbtdroneperson_B_pre_seed0.yaml": "20e56761fd2827737285156f19f86aa62802e00f3eeb7191203d182a4609320a",
+    "configs/rgbtdroneperson_E_pre_seed0.yaml": "aef77e25629790de93cf864d9fd90fd0fa556b04143597dea9d11146f9ddb58a",
+    "configs/rgbtdroneperson_Ev2_seed0.yaml": "6e7004ae451ed3464db7c2e6f9db7079c4bd0b8e9256331693860c663ba312c4",
+    "configs/rgbtdroneperson_cnn_mofe_zero_post_encoder_seed0.yaml": "a9db99e1c8016dccc5a487e347db18b0baf7c25e495be38e6f18d0dfc8cfad78",
+    "configs/rgbtdroneperson_cnn_mofe_zero_seed0.yaml": "fe50a6406a30000783745a674de2e856eb9561b24bb3d432f7ea7d1de2d74712",
+    "configs/rgbtdroneperson_detection_gate_fresh.yaml": "9aeed1edd1387572768d5da708a639fd91b2fe942445f21572c153b6641847f1",
+    "configs/rgbtdroneperson_donor_mofe_zero_post_encoder_seed0.yaml": "fc19b843c301b46bef7d9fc4e77a2ff534da6ef6569e882bd08498671591e55d",
+    "configs/rgbtdroneperson_donor_strength_mofe_zero_post_encoder_seed0.yaml": "a3f4e8bdfc06541e8ffbd178e25ce7b1ba1ed6ba4eb231274740c22e11b32b11",
+    "configs/rgbtdroneperson_dual_rtdetr.yaml": "70ce24cd12a41268f0fed0c868b9a41f3061005df671fc896845fef91522e2b7",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca.yaml": "588d62b18bd8f7b62be16b4ac3f66b138af01c9002038153e7b1b6204c34aafd",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_dfca_ibs.yaml": "a9594acf0d9a5374f9cec1eaee406e53766ff230defd80f9652568b135279a8e",
+    "configs/rgbtdroneperson_dual_rtdetr_compact_sse.yaml": "ed39a500bae7837d72f4541fedf2ccb066595631bd5e3607d4e3a12251a6050e",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca.yaml": "2d4864d22289704a56c34bc3145c27af6e8020f9bc3dd7754915e69d23dd2dde",
+    "configs/rgbtdroneperson_dual_rtdetr_dfca_ibs.yaml": "d1486187015578e1906c6def0756a08e0bef1b7f5aa5ea8441be01ba8be04423",
+    "configs/rgbtdroneperson_dual_rtdetr_sse.yaml": "e25fba2727a6ea8828a53d8c157caea86eafce541b588d37d6241df8140aa60f",
+    "configs/rgbtdroneperson_dual_rtdetr_stable_dfca.yaml": "a7c2041a1754ce81bfdaa01e0b3f9ff06b65719e1fdf7cf2b851c0401bcc82a0",
+    "configs/rgbtdroneperson_dyfclt_compact.yaml": "55bb3c71b13a7846147863912750dff9d5471ce92dd09f90b799c6cb4cae6812",
+    "configs/rgbtdroneperson_dyfclt_group64_raw.yaml": "f616ce559102ac0211809fab6fd8a13db9d877d80a172c83f08d9ec3de66f338",
+    "configs/rgbtdroneperson_dyfclt_rtdetr_recipe.yaml": "4a272d5d3624461bbed0e0a742846f44193cae70f4260d615be5a5a1d4c81663",
+    "configs/rgbtdroneperson_dyfclt_stable_dfca.yaml": "ad7b38b6d418be63a8d28da8835ff553c51df8b41d0a3ec73b96568f7c40cab7",
+    "configs/rgbtdroneperson_dyfclt_supplement.yaml": "43da3b17adbaba3a96f2a5a783d8bf80dbcf4e88b7635346af1812b5f791a78f",
+    "configs/rgbtdroneperson_frequency_utility.yaml": "80deb5853a1214e9060eda7c5bc450d4b781d26ee1ab0627a8b2817de50b3390",
+    "configs/rgbtdroneperson_legacy_topdown.yaml": "95ac623c4ce4fdbe5eeadb7f52ec235d04b9446b5722432ca3a5e3a7c4111b16",
+    "configs/rgbtdroneperson_relation_direct_seed0.yaml": "18c526c4bef483ff037e240bc81c41e44b18fe8ebbfcefbb4e3895cc8c15bc9f",
+    "configs/rgbtdroneperson_relation_learned_residual_seed0.yaml": "ae15b9ac17fb944fd7ec8f6cddd3476b5d847654dc22a62fe1eb95e613a1bda0",
+    "configs/rgbtdroneperson_relation_residual_seed0.yaml": "73039246e0300e410b69d7d034004ebe855389aabfb4ed16545d62dbfbff029b",
+    "configs/rgbtdroneperson_residual_mofe.yaml": "549adbca665a8bf3dc8f74f139823ca55a0b3527c78790eb80090e1e2d1dc3d2",
+    "configs/rgbtdroneperson_s3am_mofe.yaml": "6b4bbdf834a8959490c1faa57992d979154682ea1c1775ab933a072def9f52de",
+    "configs/rgbtdroneperson_self_band_mofe_zero_post_encoder_seed0.yaml": "ab64be378c8f7e1a8d6e26ddf2b772294d31b21025988759dd076eddef00288b",
+    "configs/rgbtdroneperson_spatial_mofe_seed0.yaml": "a6f607e4c8e3a7ab0bd5010dcbf30bf412096635d825cba48c0ba81aced83130"
+  },
+  "categories": [
+    0,
+    1,
+    2
+  ],
+  "train_images": 4900,
+  "val_images": 1225,
+  "trained_checkpoint_loaded": false,
+  "updated_weights_saved": false,
+  "updates": [
+    {
+      "step": 1,
+      "loss": 31.900239944458008,
+      "grad_norm": 65.40726470947266,
+      "image_size": [
+        448,
+        576
+      ],
+      "nonzero_module_gradient_tensors": 2,
+      "gamma": [
+        2.4978626811389404e-07,
+        -2.488352492946433e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24885624647140503,
+            0.24670752882957458,
+            0.2544475197792053,
+            0.24998870491981506
+          ],
+          "weight_spatial_std_mean": [
+            0.005276378244161606,
+            0.0075363945215940475,
+            0.0074433572590351105,
+            0.007321876473724842
+          ],
+          "routing_entropy_mean": 1.385838270187378,
+          "residual_scale_mean": 0.0,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 0.0,
+          "candidate_rms_mean": [
+            0.7529648542404175,
+            0.7586596012115479,
+            0.33976489305496216,
+            0.34041300415992737
+          ],
+          "relative_update_mean": 0.0,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25144049525260925,
+            0.2539900541305542,
+            0.2458411455154419,
+            0.24872832000255585
+          ],
+          "weight_spatial_std_mean": [
+            0.006748407147824764,
+            0.0075003718957304955,
+            0.008217563852667809,
+            0.006591983139514923
+          ],
+          "routing_entropy_mean": 1.3857903480529785,
+          "residual_scale_mean": 0.0,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 0.0,
+          "candidate_rms_mean": [
+            0.7003674507141113,
+            0.6859474182128906,
+            0.34738990664482117,
+            0.34756404161453247
+          ],
+          "relative_update_mean": 0.0,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 2,
+      "loss": 32.32331848144531,
+      "grad_norm": 64.8731460571289,
+      "image_size": [
+        512,
+        640
+      ],
+      "nonzero_module_gradient_tensors": 40,
+      "gamma": [
+        3.602210654207738e-07,
+        -5.714748567697825e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24883191287517548,
+            0.24674537777900696,
+            0.2544310688972473,
+            0.24999162554740906
+          ],
+          "weight_spatial_std_mean": [
+            0.005206071771681309,
+            0.007495446130633354,
+            0.007413808722048998,
+            0.007281106896698475
+          ],
+          "routing_entropy_mean": 1.3858445882797241,
+          "residual_scale_mean": 2.4978626811389404e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 2.4978626811389404e-07,
+          "candidate_rms_mean": [
+            0.7545588612556458,
+            0.7607697248458862,
+            0.34188127517700195,
+            0.3425000309944153
+          ],
+          "relative_update_mean": 6.402568430985411e-08,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25145530700683594,
+            0.2539632320404053,
+            0.24581633508205414,
+            0.24876508116722107
+          ],
+          "weight_spatial_std_mean": [
+            0.006681203842163086,
+            0.007632798049598932,
+            0.008217820897698402,
+            0.006518363952636719
+          ],
+          "routing_entropy_mean": 1.3857917785644531,
+          "residual_scale_mean": -2.488352492946433e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -2.488352492946433e-07,
+          "candidate_rms_mean": [
+            0.7000439763069153,
+            0.6866532564163208,
+            0.3455565571784973,
+            0.3457498848438263
+          ],
+          "relative_update_mean": 6.143437758510117e-08,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 3,
+      "loss": 31.242053985595703,
+      "grad_norm": 72.97941589355469,
+      "image_size": [
+        576,
+        704
+      ],
+      "nonzero_module_gradient_tensors": 80,
+      "gamma": [
+        6.385207598214038e-07,
+        -5.761487500421936e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24880637228488922,
+            0.24670130014419556,
+            0.254540354013443,
+            0.24995195865631104
+          ],
+          "weight_spatial_std_mean": [
+            0.005268711596727371,
+            0.007497632876038551,
+            0.007328604813665152,
+            0.007269581779837608
+          ],
+          "routing_entropy_mean": 1.3858444690704346,
+          "residual_scale_mean": 3.602210654207738e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 3.602210654207738e-07,
+          "candidate_rms_mean": [
+            0.7591233253479004,
+            0.7642990946769714,
+            0.3404137194156647,
+            0.34085482358932495
+          ],
+          "relative_update_mean": 9.242649667839942e-08,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.2514292597770691,
+            0.25394386053085327,
+            0.24593806266784668,
+            0.24868884682655334
+          ],
+          "weight_spatial_std_mean": [
+            0.006774489767849445,
+            0.007565926760435104,
+            0.008261295966804028,
+            0.0064817992970347404
+          ],
+          "routing_entropy_mean": 1.3857930898666382,
+          "residual_scale_mean": -5.714748567697825e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -5.714748567697825e-07,
+          "candidate_rms_mean": [
+            0.7031456232070923,
+            0.6901844143867493,
+            0.344608873128891,
+            0.3449019193649292
+          ],
+          "relative_update_mean": 1.395185478259009e-07,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 4,
+      "loss": 31.862369537353516,
+      "grad_norm": 65.20592498779297,
+      "image_size": [
+        448,
+        576
+      ],
+      "nonzero_module_gradient_tensors": 80,
+      "gamma": [
+        1.0352180197514826e-06,
+        -4.416421859332331e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.2488563358783722,
+            0.2467072606086731,
+            0.25444790720939636,
+            0.24998852610588074
+          ],
+          "weight_spatial_std_mean": [
+            0.005275782197713852,
+            0.00753588043153286,
+            0.007443663198500872,
+            0.007321590557694435
+          ],
+          "routing_entropy_mean": 1.3858383893966675,
+          "residual_scale_mean": 6.385207598214038e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 6.385207598214038e-07,
+          "candidate_rms_mean": [
+            0.7529573440551758,
+            0.7586511969566345,
+            0.33976006507873535,
+            0.34040653705596924
+          ],
+          "relative_update_mean": 1.608728723567765e-07,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25144052505493164,
+            0.253990113735199,
+            0.2458409070968628,
+            0.2487284243106842
+          ],
+          "weight_spatial_std_mean": [
+            0.006747371517121792,
+            0.0075000799261033535,
+            0.008216112852096558,
+            0.006591495126485825
+          ],
+          "routing_entropy_mean": 1.385790467262268,
+          "residual_scale_mean": -5.761487500421936e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -5.761487500421936e-07,
+          "candidate_rms_mean": [
+            0.7003701329231262,
+            0.685947060585022,
+            0.3473855257034302,
+            0.34756267070770264
+          ],
+          "relative_update_mean": 1.405086038630543e-07,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 5,
+      "loss": 32.230289459228516,
+      "grad_norm": 63.094085693359375,
+      "image_size": [
+        512,
+        640
+      ],
+      "nonzero_module_gradient_tensors": 80,
+      "gamma": [
+        1.2810929774786928e-06,
+        -4.1916399595720577e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24883221089839935,
+            0.24674482643604279,
+            0.2544313669204712,
+            0.24999159574508667
+          ],
+          "weight_spatial_std_mean": [
+            0.005206294357776642,
+            0.007494199089705944,
+            0.007414397317916155,
+            0.007279718294739723
+          ],
+          "routing_entropy_mean": 1.3858447074890137,
+          "residual_scale_mean": 1.0352180197514826e-06,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 1.0352180197514826e-06,
+          "candidate_rms_mean": [
+            0.754521369934082,
+            0.760739803314209,
+            0.3418925404548645,
+            0.34250789880752563
+          ],
+          "relative_update_mean": 2.5929966795956716e-07,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25145524740219116,
+            0.2539635896682739,
+            0.24581597745418549,
+            0.24876517057418823
+          ],
+          "weight_spatial_std_mean": [
+            0.00668094027787447,
+            0.0076317074708640575,
+            0.00821693241596222,
+            0.006518736947327852
+          ],
+          "routing_entropy_mean": 1.3857918977737427,
+          "residual_scale_mean": -4.416421859332331e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -4.416421859332331e-07,
+          "candidate_rms_mean": [
+            0.7000516653060913,
+            0.6866630911827087,
+            0.34555989503860474,
+            0.3457546830177307
+          ],
+          "relative_update_mean": 1.0844848929991713e-07,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    },
+    {
+      "step": 6,
+      "loss": 31.139541625976562,
+      "grad_norm": 70.2917709350586,
+      "image_size": [
+        576,
+        704
+      ],
+      "nonzero_module_gradient_tensors": 80,
+      "gamma": [
+        1.6746309938753257e-06,
+        -1.9169338827396132e-07
+      ],
+      "statistics": {
+        "rgb_from_thermal": {
+          "routing_weight_mean": [
+            0.24880683422088623,
+            0.24670037627220154,
+            0.2545410394668579,
+            0.2499517798423767
+          ],
+          "weight_spatial_std_mean": [
+            0.005268344655632973,
+            0.007496179547160864,
+            0.007327862083911896,
+            0.007269392721354961
+          ],
+          "routing_entropy_mean": 1.3858444690704346,
+          "residual_scale_mean": 1.2810929774786928e-06,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": 1.2810929774786928e-06,
+          "candidate_rms_mean": [
+            0.7591041326522827,
+            0.7642837166786194,
+            0.34040769934654236,
+            0.3408462405204773
+          ],
+          "relative_update_mean": 3.214364028281125e-07,
+          "valid_fraction_mean": 1.0
+        },
+        "thermal_from_rgb": {
+          "routing_weight_mean": [
+            0.25142931938171387,
+            0.25394463539123535,
+            0.24593740701675415,
+            0.24868863821029663
+          ],
+          "weight_spatial_std_mean": [
+            0.006774356588721275,
+            0.007565169595181942,
+            0.008260402828454971,
+            0.006482050754129887
+          ],
+          "routing_entropy_mean": 1.3857930898666382,
+          "residual_scale_mean": -4.1916399595720577e-07,
+          "residual_multiplier_mean": 1.0,
+          "effective_residual_scale_mean": -4.1916399595720577e-07,
+          "candidate_rms_mean": [
+            0.7031282782554626,
+            0.690171480178833,
+            0.34461259841918945,
+            0.34490519762039185
+          ],
+          "relative_update_mean": 1.0317888410327214e-07,
+          "valid_fraction_mean": 1.0
+        }
+      }
+    }
+  ],
+  "all_module_gradients_finite_and_eventually_nonzero": true,
+  "parameter_tensors_updated": [
+    "gamma_rgb",
+    "gamma_thermal",
+    "rgb_from_thermal.project.weight",
+    "rgb_from_thermal.experts.0.gate.3.weight",
+    "rgb_from_thermal.experts.0.gate.3.bias",
+    "rgb_from_thermal.experts.0.output.weight",
+    "rgb_from_thermal.experts.1.gate.3.weight",
+    "rgb_from_thermal.experts.1.gate.3.bias",
+    "rgb_from_thermal.experts.1.output.weight",
+    "rgb_from_thermal.experts.2.gate.3.weight",
+    "rgb_from_thermal.experts.2.gate.3.bias",
+    "rgb_from_thermal.experts.2.output.weight",
+    "rgb_from_thermal.experts.3.gate.3.weight",
+    "rgb_from_thermal.experts.3.gate.3.bias",
+    "rgb_from_thermal.experts.3.output.weight",
+    "rgb_from_thermal.router.0.weight",
+    "rgb_from_thermal.router.3.weight",
+    "rgb_from_thermal.router.3.bias",
+    "rgb_from_thermal.values.0.weight",
+    "rgb_from_thermal.values.1.weight",
+    "thermal_from_rgb.project.weight",
+    "thermal_from_rgb.experts.0.gate.3.weight",
+    "thermal_from_rgb.experts.0.gate.3.bias",
+    "thermal_from_rgb.experts.0.output.weight",
+    "thermal_from_rgb.experts.1.gate.3.weight",
+    "thermal_from_rgb.experts.1.gate.3.bias",
+    "thermal_from_rgb.experts.1.output.weight",
+    "thermal_from_rgb.experts.2.gate.3.weight",
+    "thermal_from_rgb.experts.2.gate.3.bias",
+    "thermal_from_rgb.experts.2.output.weight",
+    "thermal_from_rgb.experts.3.gate.3.weight",
+    "thermal_from_rgb.experts.3.gate.3.bias",
+    "thermal_from_rgb.experts.3.output.weight",
+    "thermal_from_rgb.router.0.weight",
+    "thermal_from_rgb.router.3.weight",
+    "thermal_from_rgb.router.3.bias",
+    "thermal_from_rgb.values.0.weight",
+    "thermal_from_rgb.values.1.weight"
+  ],
+  "EMA_eval_finite_repeatable": true,
+  "ema_updates": 6,
+  "original_stage2_sources_unchanged": true,
+  "note": "Production reinitializes seed0; gamma0 opens before inner gates, so early warmup can leave some FP32 weights unchanged despite nonzero gradients.",
+  "ready": true,
+  "input_sha256": {
+    "/data/siwoo/DyFCLT/weights/ResNet50_vd_ssld_v2_pretrained_from_paddle.pth": "641dc59835d5228e6013ac45acb633592ec825144fb3d78055bc07699f404353",
+    "/data/siwoo/COXNet-release/data/RGBTDronePerson/train_thermal.json": "6915b8f260b77364116e9dfb7b277f0540df610c5cc674bed41a7aab90b36dc1",
+    "/data/siwoo/COXNet-release/data/RGBTDronePerson/val_thermal.json": "5aebf4217ba5ca24569fe672b03956723ad47b24a38bcf96a2cdb42e5c0b2c28"
+  }
+}

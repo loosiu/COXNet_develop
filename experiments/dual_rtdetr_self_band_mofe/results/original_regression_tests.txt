@@ -1,0 +1,46 @@
+test_bad_multiplier_or_wrong_expert_axis_is_rejected (test_spatial_mofe.SpatialMoFETests) ... ok
+test_bank_parameters_and_rng_are_identical_to_B (test_spatial_mofe.SpatialMoFETests) ... ok
+test_both_directions_use_original_features_and_half_residual (test_spatial_mofe.SpatialMoFETests) ... ok
+test_detected_signal_trains_router_and_every_expert (test_spatial_mofe.SpatialMoFETests) ... ok
+test_invalid_regions_preserve_original_and_diagnostics_ignore_them (test_spatial_mofe.SpatialMoFETests) ... ok
+test_routing_is_local_and_probabilities_sum_at_each_position (test_spatial_mofe.SpatialMoFETests) ... ok
+test_A_initial_tensors_and_random_state_are_unchanged (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_EMA_is_finite_and_repeatable (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_detection_loss_updates_all_parameters_and_logs_spatial_variation (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_enhancement_is_before_FPN_and_changes_P4_P5 (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_fresh_seed0_recipe_matches_A_and_B_pre (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_replay_and_zero_gamma_bypass_are_exact (test_spatial_mofe_integration.SpatialIntegrationTests) ... ok
+test_detection_gradients_unlock_experts_after_gamma_update_and_EMA_tracks_them (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_frequency_module_has_CNN_experts_and_spatial_weights_without_QKV (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_recipe_is_zero_init_CNN_spatial_residual_with_the_same_A_training (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_zero_init_preserves_A_tensors_RNG_and_initial_predictions (test_cnn_zero_mofe.CNNZeroMoFETests) ... ok
+test_best_epoch_is_distinct_from_final_and_checkpoints_are_required (test_staged_queue.StagedQueueTests) ... ok
+test_checkpoint_completion_requires_finite_best_metric_and_correct_ema_metadata (test_staged_queue.StagedQueueTests) ... ok
+test_checkpoint_with_nonfinite_weights_is_not_complete (test_staged_queue.StagedQueueTests) ... ok
+test_cuda_mapping_probe_refuses_other_physical_gpu (test_staged_queue.StagedQueueTests) ... ok
+test_failed_training_never_releases_next_stage (test_staged_queue.StagedQueueTests) ... ok
+test_gpu_lock_conflict_releases_partial_acquisition (test_staged_queue.StagedQueueTests) ... ok
+test_no_exit_file_waits_without_launching_next_stage (test_staged_queue.StagedQueueTests) ... ok
+test_success_exit_without_twenty_validations_cannot_release_queue (test_staged_queue.StagedQueueTests) ... ok
+test_launch_config_uses_three_benchmark_classes_and_tiny_ap50 (test_training_protocol.TrainingProtocolTests) ... ok
+test_metric_selection_rejects_missing_configured_key (test_training_protocol.TrainingProtocolTests) ... ok
+test_full_dual_encoders_receive_gradients_without_proposed_modules (test_rtdetr_baseline_recipe.BaselineTests) ... ok
+test_ema_ramp_and_checkpoint_continue_same_trajectory (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_groups_cover_trainable_parameters_once_and_preserve_warmup_ratio (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_inference_selects_ema_and_legacy_remains_loadable (test_rtdetr_baseline_recipe.RecipeTests) ... ok
+test_all_experts_and_router_learn_on_first_backward (test_s3am_mofe.S3AMMoFETests) ... ok
+test_all_invalid_is_finite_identity (test_s3am_mofe.S3AMMoFETests) ... ok
+test_bad_input_and_non_simplex_overrides_are_rejected (test_s3am_mofe.S3AMMoFETests) ... ok
+test_forward_matches_cached_mixture_without_recomputation (test_s3am_mofe.S3AMMoFETests) ... ok
+test_invalid_constructor_values_are_rejected (test_s3am_mofe.S3AMMoFETests) ... ok
+test_paper_frequency_pair_order_and_channel_counts (test_s3am_mofe.S3AMMoFETests) ... ok
+test_single_pixel_and_odd_size_inputs_preserve_shape (test_s3am_mofe.S3AMMoFETests) ... ok
+test_softmax_is_image_level_simplex_with_adaptive_initialization (test_s3am_mofe.S3AMMoFETests) ... ok
+test_validity_intersection_controls_injection_and_pooling (test_s3am_mofe.S3AMMoFETests) ... ok
+test_weighted_sum_is_added_directly_only_to_rgb (test_s3am_mofe.S3AMMoFETests) ... ok
+test_zero_experts_return_exact_identity (test_s3am_mofe.S3AMMoFETests) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 22.943s
+
+OK

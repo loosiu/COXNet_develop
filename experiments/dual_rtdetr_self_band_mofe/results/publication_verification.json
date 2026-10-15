@@ -1,0 +1,12 @@
+{
+  "publication_tests_passed": 43,
+  "exact_live_code_files": 42,
+  "original_source_snapshot_files": 151,
+  "main_config_only_dataset_paths_changed": true,
+  "all_python_parses": true,
+  "all_yaml_parses": true,
+  "no_model_weights_or_dataset_published": true,
+  "no_credential_patterns_found": true,
+  "live_training_certificate_still_valid": true,
+  "new_model_accuracy_pending": true
+}

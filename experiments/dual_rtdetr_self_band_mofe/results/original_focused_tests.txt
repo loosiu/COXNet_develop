@@ -1,0 +1,17 @@
+test_banks_read_original_pair_and_masks_block_injection (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_config_only_changes_expert_mode_and_output (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_gradients_open_after_gamma_and_final_gate_layers (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_initial_gate_is_one_but_expert_is_nonzero (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_learned_relation_gate_depends_on_donor_but_value_does_not (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_projection_router_and_rng_match_existing_bank (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_receiver_zero_forbids_direct_donor_values (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_two_values_shared_across_four_experts (test_self_band_mofe.SelfBandMoFETests) ... ok
+test_only_idle_queue_can_be_retired (test_self_band_queue.SelfBandQueueTests) ... ok
+test_reservation_keeps_all_resource_locks (test_self_band_queue.SelfBandQueueTests) ... ok
+test_retirement_requires_completed_second_stage (test_self_band_queue.SelfBandQueueTests) ... ok
+test_started_third_stage_must_never_be_replaced (test_self_band_queue.SelfBandQueueTests) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.328s
+
+OK

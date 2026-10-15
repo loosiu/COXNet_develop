@@ -17,6 +17,7 @@ question for every Thermal object instance.
 
 ## News
 
+- **2026-10-15:** Added [receiver-value relation-gated MoFE](experiments/dual_rtdetr_self_band_mofe/README.md): cross-modal band relations gate shared receiver Low/High values, followed by four pair-specific output projections and the existing spatial router. Uses post-encoder P3, bidirectional original inputs, gamma0 initialization and the matched seed0/batch2/20epoch recipe. Includes executable code, configs, tests, GPU gradient evidence and the guarded lab queue; accuracy is pending.
 - **2026-10-14:** Added [CNN-only spatial bidirectional MoFE](experiments/dual_rtdetr_cnn_mofe_zero/README.md): SWT Low/High four-pair CNN experts, per-location softmax routing and zero-initialized learned residual strengths. Adds no attention to MoFE; existing RT-DETR attention and the matched seed-0 recipe remain. Relation-based and earlier spatial experiments are preserved. Training/AP are pending.
 - **2026-10-14:** Changed the [relation-MoFE primary residual strength](experiments/dual_rtdetr_relation_mofe/README.md) initialization to zero. Initial features match the baseline; detection gradients update gamma first and reach experts/router after gamma moves. The standard 20-epoch schedule is unchanged.
 - **2026-10-14:** Set the [relation-MoFE primary experiment](experiments/dual_rtdetr_relation_mofe/README.md) to original P3 plus an independently learned RGB/Thermal residual strength, initialized at 0.1 without fixed 0.5 attenuation. Direct and half-multiplier controls remain available.
